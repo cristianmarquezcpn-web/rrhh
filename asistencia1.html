@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Esencial Salud - Pro v45 FULL</title>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    :root { 
+        --cobalto: #1a2a6c; --oro: #f1c40f; --verde: #2ecc71; 
+        --rojo: #e74c3c; --azul: #3498db; --gris: #f4f7f6; --dark: #2d3436; 
+    }
+    
+    /* RESET GENERAL */
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--gris); font-size: 11px; color: var(--dark); overflow: hidden; height: 100vh; }
+
+    /* PANTALLA DE LOGIN (INICIO PIN) - RESTAURADA */
+    #login-screen { 
+        position: fixed; top:0; left:0; width:100%; height:100%; 
+        background: linear-gradient(135deg, var(--cobalto) 0%, #000 100%); 
+        z-index: 10000; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; 
+    }
+    .login-card { 
+        background: rgba(255,255,255,0.1); padding: 40px; border-radius: 20px; 
+        backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); text-align: center; 
+    }
+    .pin-input { 
+        background: white; border: none; padding: 15px; border-radius: 10px; 
+        font-size: 24px; width: 150px; text-align: center; letter-spacing: 10px; 
+        margin-bottom: 20px; font-weight: 800; outline: none; color: #333; 
+    }
+
+    /* ESTRUCTURA PRINCIPAL - PANTALLA COMPLETA */
+    .wrapper { display: flex; height: 100vh; width: 100vw; }
+    
+    .sidebar { 
+        width: 160px; background: linear-gradient(180deg, var(--cobalto) 0%, #000 100%); 
+        color: white; display: flex; flex-direction: column; flex-shrink: 0; z-index: 100; 
+    }
+    .sidebar-header { padding: 20px 10px; text-align: center; font-weight: 800; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    
+    .nav-item { padding: 15px 10px; cursor: pointer; transition: 0.3s; border-left: 4px solid transparent; font-weight: 600; opacity: 0.8; }
+    .nav-item:hover { background: rgba(255,255,255,0.1); opacity: 1; }
+    .nav-item.active { background: rgba(241, 196, 15, 0.2); border-left: 4px solid var(--oro); color: var(--oro); opacity: 1; }
+
+    .main-container { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; width: 100%; }
+    .content { flex-grow: 1; padding: 20px; overflow-y: auto; width: 100%; box-sizing: border-box; }
+
+    /* DISEÑO DE TABLAS GENERAL (LIQUIDACION, LEGAJOS) */
+    .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 15px; }
+    .table-wrapper { width: 100%; overflow-x: auto; border-radius: 8px; border: 1px solid #eee; background: white; }
+    
+    table { border-collapse: collapse; width: 100%; } /* Por defecto al 100% para Liquidación */
+    th, td { border: 1px solid #edf2f7; padding: 8px; text-align: center; }
+
+    /* ESTILOS ESPECIFICOS PARA ASISTENCIA (LOS CUADRADITOS) */
+    #b-asist-table { width: max-content !important; } /* Solo la tabla de asistencia se desborda a lo largo */
+    
+    .td-asist { padding: 0 !important; width: 45px !important; height: 40px !important; }
+    .col-nombre { 
+        width: 160px !important; text-align: left !important; padding-left: 10px !important; 
+        background: white !important; position: sticky; left: 0; z-index: 10; 
+        border-right: 2px solid var(--cobalto) !important; font-weight: 700; 
+    }
+
+    /* EL FLIPPER DE ASISTENCIA */
+    .flip-container { width: 45px; height: 40px; perspective: 1000px; margin: auto; }
+    .flipper { position: relative; width: 100%; height: 100%; transition: 0.5s; transform-style: preserve-3d; }
+    .flip-container.flipped .flipper { transform: rotateY(180deg); }
+    .front, .back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+    .back { background: #fff; transform: rotateY(180deg); border: 1px solid #ddd; }
+
+    /* COLORES */
+    .celda-flip { width: 100%; height: 100%; border: none; background: transparent; text-align: center; font-weight: 900; font-size: 13px; }
+    .P { background: var(--verde) !important; color: white; }
+    .A { background: var(--rojo) !important; color: white; }
+    .AC { background: var(--azul) !important; color: white; }
+    .F { background: #9b59b6 !important; color: white; }
+    .bloqueado { background: #e9ecef !important; color: #999; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+    <div class="login-card">
+        <h2>ESENCIAL SALUD</h2>
+        <input type="password" id="pin-input" class="pin-input" maxlength="4" placeholder="••••" oninput="checkPin(this.value)">
+        <p id="error-login" style="color:var(--rojo); font-weight:bold; display:none;">ACCESO DENEGADO</p>
+    </div>
+</div>
+
+<div class="wrapper" id="app-wrapper">
+    <nav class="sidebar">
+        <div class="sidebar-header">MENU</div>
+        <div class="nav-item active" onclick="modulo('asistencia', this)">📅 ASISTENCIA</div>
+        <div class="nav-item admin-only" onclick="modulo('legajos', this)">👤 LEGAJOS</div>
+        <div class="nav-item admin-only" onclick="modulo('liquidacion', this)">💰 LIQUIDACIÓN</div>
+        <div class="nav-item admin-only" onclick="modulo('reportes', this)">📊 INFORMES</div>
+        <div class="nav-item" onclick="modulo('chat', this)">💬 CHAT</div>
+        <div style="flex-grow:1;"></div>
+        <div class="nav-item" onclick="location.reload()">🔒 SALIR</div>
+    </nav>
+
+    <div class="main-container">
+        <div class="content">
+            <div id="asistencia" class="modulo-div">
+                <div class="card" style="display:flex; gap:10px; align-items:center;">
+                    <select id="c-sel" onchange="renderAsist()">
+                        <option value="CET_MANANA">CET - MAÑANA</option>
+                        <option value="CET_TARDE">CET - TARDE</option>
+                        <option value="CET_VESP">CET - VESPERTINO</option>
+                        <option value="CD">CD (CENTRO DE DÍA)</option>
+                        <option value="REHAB">REHABILITACIÓN</option>
+                    </select>
+                    <select id="m-sel" onchange="renderAsist()"></select>
+                    <select id="a-sel" onchange="renderAsist()"></select>
+                    <button class="btn admin-only" style="background:#9b59b6; color:white;" onclick="marcarFeriado()">🚩 FERIADO</button>
+                    <button class="btn admin-only" style="background:#7f8c8d; color:white;" onclick="limpiarDia()">🧹 LIMPIAR DÍA</button>
+                </div>
+                <div class="card"><div class="table-wrapper"><table><thead id="h-asist"></thead><tbody id="b-asist"></tbody></table></div></div>
+            </div>
+
+            <div id="legajos" class="modulo-div" style="display:none">
+                <div class="card">
+                    <div style="display:flex; gap:10px; margin-bottom:10px;">
+                        <button class="btn btn-primary" onclick="nuevoEmpleado()">+ INDIVIDUAL</button>
+                        <button class="btn btn-danger" onclick="vaciar()" style="background:var(--rojo); color:white;">🗑️ VACIAR BASE</button>
+                    </div>
+                    <textarea id="txt-masivo" style="width:100%; height:60px; border-radius:8px; border:1px solid #ddd; padding:8px; font-size:10px;" placeholder="Pega desde Excel: Nombre;Email;CUIT;Hs;Valor;Sede;Ingreso;Esquema;CBU"></textarea>
+                    <button class="btn btn-primary" style="width:100%; margin-top:5px; background:var(--azul);" onclick="importar()">🚀 PROCESAR EXCEL</button>
+                </div>
+                <div class="card">
+                    <div class="table-wrapper">
+                        <table style="width:1400px">
+                            <thead>
+                                <thead><tr><th>Nombre</th><th>Profesión</th><th>Entrada</th><th>Salida</th><th>CUIT</th><th>Hs/D</th><th>$xH</th><th>CBU/Alias</th><th>Centro</th><th>Ingreso</th><th>Egreso</th><th>Esquema</th><th>Doc</th><th>X</th></tr></thead>
+                            </thead>
+                            <tbody id="b-legajos"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+<div id="liquidacion" class="modulo-div" style="display:none">
+    <div class="card" id="btns-liq" style="display:flex; gap:5px; flex-wrap:wrap;"></div>
+    <div id="count-pend" style="margin: 10px 0; font-weight: bold;"></div>
+    
+    <div class="card">
+        <div style="background: #f4f4f4; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
+            <button onclick="imprimirPlanillaAsistencia()" class="btn" style="background: var(--cobalto); color: white;">
+                🖨️ IMPRIMIR PLANILLA DIARIA
+            </button>
+            
+            <button onclick="congelarMesActual()" class="btn" style="background: var(--rojo); color: white;">
+                🔒 CERRAR MES Y CONGELAR
+            </button>
+            
+            <span style="font-size: 12px; color: #666; margin-left: auto;">
+                * El cierre de mes bloquea los valores para auditoría.
+            </span>
+        </div>
+
+        <table ondragover="event.preventDefault()" ondrop="validarMasivo(event)">
+            <thead>
+                <tr>
+                    <th>Profesional</th>
+                    <th>CUIT</th>
+                    <th>Hs Totales</th>
+                    <th>Valor Hora</th>
+                    <th>Monto Total</th>
+                    <th>Estado</th>
+                    <th>Mail</th>
+                </tr>
+            </thead>
+            <tbody id="b-liq"></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="reportes" class="modulo-div" style="display:none">
+    <button class="btn btn-primary" onclick="descargarPDF()" style="background:var(--verde); width:100%; padding:15px; font-size:14px; margin-bottom:10px;">📄 DESCARGAR PDF</button>
+    <div id="pdf-area" class="card">
+        <h1 style="text-align:center; color:var(--cobalto);">INFORME MENSUAL</h1>
+        <p id="rep-fecha-tit" style="text-align:center; font-weight:bold;"></p>
+        <div id="rep-total" style="font-size:28px; font-weight:bold; text-align:center; color:var(--cobalto); margin-bottom:20px;">$0</div>
+        
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:20px; text-align:center;">
+            <div style="background:#f8f9fa; padding:10px; border-radius:10px;"><b>Presentismo</b><br><span id="rep-presen" style="font-size:16px;">0%</span></div>
+            <div style="background:#f8f9fa; padding:10px; border-radius:10px;"><b>Staff</b><br><span id="rep-staff" style="font-size:16px;">0</span></div>
+            <div style="background:#f8f9fa; padding:10px; border-radius:10px;"><b>Ausentes</b><br><span id="rep-ausente" style="font-size:16px;">0</span></div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+            <div>
+                <h3 style="border-bottom:1px solid #eee;">Gasto por Sede</h3>
+                <div id="rep-centro-list" style="line-height:2.2;"></div>
+            </div>
+            <div style="height:250px;"><canvas id="graficoSedes"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<div id="chat" class="modulo-div" style="display:none">
+    <div class="card">
+        <div id="chat-msgs" style="height: 350px; overflow-y: auto; margin-bottom: 15px; padding: 10px; border: 1px solid #f0f0f0;"></div>
+        <div style="display:flex; gap:5px;">
+            <input type="text" id="chat-input" style="flex-grow:1; padding:10px;" placeholder="Escribí un mensaje..." onkeypress="if(event.key==='Enter') enviarMsg()">
+            <button class="btn btn-primary" onclick="enviarMsg()">ENVIAR</button>
+        </div>
+    </div>
+</div>
+<div id="visor-modal" onclick="this.style.display='none'"><div class="modal-content"><iframe id="visor-frame" style="width:100%; height:100%; border:none;"></iframe></div></div>
+
+<script>
+    const PIN_SECRETARIA = "1234", PIN_ADMIN = "1986";
+    let usuarioActivo = "";
+    let miGrafico = null;
+    let centroLiqActivo = 'CET_MANANA';
+    let datosAsistencia = {};
+    
+    function checkPin(val) { 
+        if(val.length === 4) { 
+            if(val === PIN_ADMIN || val === PIN_SECRETARIA) { 
+                usuarioActivo = (val === PIN_ADMIN) ? "ADMIN" : "SECRETARIA"; 
+                document.getElementById('login-screen').style.display = 'none'; 
+                document.getElementById('app-wrapper').style.display = 'flex'; 
+                if(val === PIN_SECRETARIA) document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none'); 
+            } else { 
+                document.getElementById('error-login').style.display = 'block'; 
+                setTimeout(() => { document.getElementById('pin-input').value = ""; document.getElementById('error-login').style.display = 'none'; }, 1000); 
+            } 
+        } 
+    }
+
+    const firebaseConfig = { apiKey: "AIzaSyAugXXx_b_wKFByhDbLZslk2HA_UTzrzd8", authDomain: "clinicaintegral-5c488.firebaseapp.com", databaseURL: "https://clinicaintegral-5c488-default-rtdb.firebaseio.com", projectId: "clinicaintegral-5c488", storageBucket: "clinicaintegral-5c488.firebasestorage.app", messagingSenderId: "184090967634", appId: "1:184090967634:web:09715937b33ea48288698b" };
+    firebase.initializeApp(firebaseConfig);
+    const baseDb = firebase.database().ref('/SISTEMA_PERSONAL');
+    const dbAsistencia = baseDb.child('asistencia');
+    const dbEmpleados = baseDb.child('empleados');
+    const dbChat = baseDb.child('chat');
+    
+    let empleados = [];
+    const meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const dSemana = ["D","L","M","X","J","V","S"];
+    const mS = document.getElementById('m-sel'), aS = document.getElementById('a-sel');
+    meses.forEach((m,i) => mS.innerHTML += `<option value="${i}">${m}</option>`);
+    for(let i=2025; i<=2035; i++) aS.innerHTML += `<option value="${i}">${i}</option>`;
+    mS.value = new Date().getMonth(); aS.value = 2026;
+    const centroS = document.getElementById('c-sel');
+    dbEmpleados.on('value', snap => { 
+        let val = snap.val();
+        empleados = val ? (Array.isArray(val) ? val : Object.values(val)) : []; 
+        renderLegajos(); 
+        renderAsist(); 
+    });
+
+    function modulo(id, el) { 
+        document.querySelectorAll('.modulo-div').forEach(d => d.style.display = 'none'); 
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active')); 
+        document.getElementById(id).style.display = 'block'; 
+        el.classList.add('active'); 
+        if(id === 'reportes') renderReportes(); 
+        if(id === 'liquidacion') renderLiqBtns(); 
+    }
+
+    // --- LEGAJOS ---
+function renderLegajos() {
+    document.getElementById('b-legajos').innerHTML = empleados.map((e, i) => {
+        // Cálculo automático de salida: entrada + horas diarias
+        let hSalida = "--:--";
+        if(e.hIngreso && e.h) {
+            let [hh, mm] = e.hIngreso.split(':').map(Number);
+            let total = hh + parseInt(e.h);
+            let hhS = (total < 24 ? total : total - 24).toString().padStart(2, '0');
+            let mmS = mm.toString().padStart(2, '0');
+            hSalida = `${hhS}:${mmS}`;
+        }
+
+        return `
+            <tr>
+                <td><input onchange="upd(${i},'n',this.value)" value="${e.n || ''}" style="width:100px" title="Nombre"></td>
+                <td><input onchange="upd(${i},'profesion',this.value)" value="${e.profesion || ''}" placeholder="Ej: Psicólogo" style="width:80px"></td>
+                <td><input type="time" onchange="upd(${i},'hIngreso',this.value)" value="${e.hIngreso || '08:00'}" style="width:75px"></td>
+                <td style="font-weight:bold; color:var(--cobalto); text-align:center">${hSalida}</td>
+                <td><input onchange="upd(${i},'cuit',this.value)" value="${e.cuit || ''}" style="width:90px"></td>
+                <td><input type="number" onchange="upd(${i},'h',this.value)" value="${e.h || 0}" style="width:35px"></td>
+                <td><input type="number" onchange="upd(${i},'vh',this.value)" value="${e.vh || 0}" style="width:55px"></td>
+                <td><input onchange="upd(${i},'cbu',this.value)" value="${e.cbu || ''}" style="width:90px"></td>
+                <td><input onchange="upd(${i},'c',this.value.toUpperCase())" value="${e.c || ''}" style="width:60px"></td>
+                <td><input type="date" onchange="upd(${i},'fIngreso',this.value)" value="${e.fIngreso || ''}" style="width:105px"></td>
+                <td><input type="date" onchange="upd(${i},'fEgreso',this.value)" value="${e.fEgreso || ''}" style="width:105px"></td>
+                <td><input onchange="upd(${i},'esquema',this.value.toUpperCase())" value="${e.esquema || 'LMXJV'}" style="width:55px"></td>
+                <td><button class="btn" onclick="subirArchivo(${i})" style="background:var(--verde); color:white; padding:2px 5px">+</button></td>
+                <td><button onclick="delE(${i})" style="border:none; color:var(--rojo); cursor:pointer; background:none; font-size:18px">🗑️</button></td>
+            </tr>`;
+    }).join('');
+}
+// FUNCIÓN PARA ACTUALIZAR DATOS DEL LEGAJO AUTOMÁTICAMENTE
+function upd(index, campo, valor) {
+    // 1. Buscamos el empleado en nuestro array local
+    const emp = empleados[index];
+    if (!emp) return;
+
+    // 2. Actualizamos el dato en Firebase usando su ID único
+    // Esto hace que el cambio sea permanente
+    dbEmpleados.child(index).update({
+        [campo]: valor
+    }).then(() => {
+        console.log(`Campo ${campo} actualizado a: ${valor}`);
+        // No hace falta recargar todo, Firebase lo hace solo con el .on('value')
+    }).catch(err => {
+        console.error("Error al guardar:", err);
+        alert("No se pudo guardar el cambio. Revisá la conexión.");
+    });
+}
+function importar() { 
+    const txt = document.getElementById('txt-masivo').value.trim();
+    if(!txt) return alert("Pegá los datos de Excel.");
+    const lineas = txt.split('\n');
+    let nuevos = [];
+    
+    lineas.forEach(l => {
+        const d = l.split(/\t/); // Split por tabulación (Excel)
+        if(d.length >= 2 && d[0].trim() !== "") { 
+            nuevos.push({ 
+                id: "ID" + Date.now() + Math.random().toString(36).substr(2,5), 
+                n: d[0]?.trim(), 
+                profesion: d[1]?.trim() || "", 
+                hIngreso: d[2]?.trim() || "08:00",
+                cuit: d[3]?.trim() || "", 
+                h: d[4]?.trim() || 4, 
+                vh: d[5]?.trim() || 0, 
+                cbu: d[6]?.trim() || "", 
+                c: d[7]?.trim().toUpperCase() || "", 
+                fIngreso: d[8]?.trim() || "2026-01-01",
+                fEgreso: d[9]?.trim() || "",
+                esquema: d[10]?.trim().toUpperCase() || "LMXJV"
+            }); 
+        }
+    }); 
+    
+    dbEmpleados.set([...empleados, ...nuevos]);
+    document.getElementById('txt-masivo').value = "";
+    alert("¡Importación exitosa!");
+}
+function nuevoEmpleado() { 
+    const sede = document.getElementById('c-sel').value; 
+    const nid = "ID" + Date.now(); 
+    const nuevo = {
+        id: nid, 
+        n: "NUEVO", 
+        profesion: "", 
+        hIngreso: "08:00", 
+        h: 4, 
+        vh: 1000, 
+        c: sede, 
+        fIngreso: "2026-01-01", 
+        fEgreso: "", 
+        esquema: "LMXJV"
+    };
+    dbEmpleados.child(empleados.length).set(nuevo); 
+}
+function renderAsist() {
+    const c = document.getElementById('c-sel').value, m = mS.value, a = aS.value;
+    const totalMes = new Date(a, parseInt(m) + 1, 0).getDate();
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0); 
+
+    let h1 = `<tr><th class="col-nombre"></th>`, h2 = `<tr><th class="col-nombre">PROFESIONAL</th>`;
+    for (let d = 1; d <= totalMes; d++) {
+        let f = new Date(a, m, d);
+        let diaL = dSemana[f.getDay()];
+        h1 += `<th class="${diaL === 'D' ? 'bloqueado' : ''}">${diaL}</th>`; 
+        h2 += `<th>${d}</th>`;
+    }
+    h1 += `<th style="width:40px; background:var(--cobalto); color:white;">EXT</th></tr>`;
+    h2 += `<th style="width:40px; background:var(--cobalto); color:white;">+</th></tr>`;
+    document.getElementById('h-asist').innerHTML = h1 + h2;
+
+    dbAsistencia.child(`${a}/${m}/${c}`).on('value', snap => {
+        const dataRaw = snap.val() || {};
+        document.getElementById('b-asist').innerHTML = empleados.filter(e => e.c === c).map(e => {
+            let row = `<td class="col-nombre"><b>${e.n}</b></td>`;
+            const dataE = dataRaw[e.id] || {};
+            const esc = e.esquema || "";
+
+            for (let d = 1; d <= totalMes; d++) {
+                let fC = new Date(a, m, d), dL = dSemana[fC.getDay()], fI = new Date((e.fIngreso || "2000-01-01") + "T00:00:00");
+                let bloq = (fC.getDay() === 0) || (fC < fI) || (esc !== "" && !esc.includes(dL));
+
+                let v = dataE[d] || "";
+                let hIn = "--", hOut = "--", valorFinal = "";
+                let bgEstilo = ""; 
+
+                // --- DETECCIÓN ROBUSTA DE FIRMA (OBJETO) ---
+                if (v !== null && typeof v === 'object') {
+                    valorFinal = v.val || "P";
+                    hIn = v.in || "--"; 
+                    hOut = v.out || "--";
+                    
+                    // Color base por defecto (Verde)
+                    bgEstilo = "background-color: #2ecc71; color: white;"; 
+                    
+                    // Validar tardanza (Amarillo) - SIEMPRE se evalúa al cargar
+                    if (hIn !== "--" && e.hIngreso) {
+                        let minsTarde = calcularDiferenciaMinutos(e.hIngreso, hIn);
+                        if (minsTarde > 15) {
+                            bgEstilo = "background-color: #f1c40f; color: #333;"; 
+                        }
+                    }
+                } 
+                // --- DETECCIÓN DE TEXTO MANUAL (P, F, AC) ---
+                else {
+                    valorFinal = v;
+                    let vL = valorFinal.toString().toLowerCase();
+                    if (vL === 'p') bgEstilo = "background-color: #2ecc71; color: white;";
+                    else if (vL === 'f') bgEstilo = "background-color: #9b59b6; color: white;";
+                    else if (vL === 'ac') bgEstilo = "background-color: #3498db; color: white;";
+                    else if (valorFinal === "" && !bloq && fC < hoy) {
+                        bgEstilo = "background-color: #ffcccc; color: #c0392b;"; 
+                    }
+                }
+
+                row += `<td>
+                    <div class="flip-container ${bloq ? 'bloqueado' : ''}" id="flip-${e.id}-${d}">
+                        <div class="flipper">
+                            <div class="front" style="display:flex; align-items:center; justify-content:center; ${bgEstilo}">
+                                <input class="celda-flip" value="${valorFinal}" 
+                                       style="background: transparent; color: inherit; border: none; text-align: center; width: 100%; font-weight: bold; font-size: 11px;"
+                                       ${bloq ? 'disabled tabindex="-1"' : ''}
+                                       oninput="saveA('${e.id}',${d},this.value,'${c}',${m},${a})"
+                                       onclick="event.stopPropagation()"
+                                       oncontextmenu="event.preventDefault(); document.getElementById('flip-${e.id}-${d}').classList.toggle('flipped')">
+                            </div>
+                            <div class="back" style="background: white; border: 1px solid #ddd; display: flex; flex-direction: column; justify-content: center; align-items: center;" onclick="this.parentElement.parentElement.classList.toggle('flipped')">
+                                <span style="color:#27ae60; font-size:8px; font-weight:800; line-height:1.2;">E: ${hIn}</span>
+                                <span style="color:#c0392b; font-size:8px; font-weight:800; line-height:1.2;">S: ${hOut}</span>
+                            </div>
+                        </div>
+                    </div>
+                </td>`;
+            }
+            let extras = dataE['EXT'] || 0;
+            row += `<td style="background:#e3f2fd"><input class="celda-flip" value="${extras}" oninput="saveA('${e.id}','EXT',this.value,'${c}',${m},${a})"></td>`;
+            return `<tr>${row}</tr>`;
+        }).join('');
+    });
+}
+function saveA(id, d, v, c, m, a) { 
+    const el = event.target; 
+    v = v.toUpperCase(); 
+    if(v === 'C') v = 'AC'; 
+    
+    // Guardamos en Firebase
+    dbAsistencia.child(`${a}/${m}/${c}/${id}/${d}`).set(v); 
+    
+    // Limpiamos colores previos pero MANTENEMOS celda-flip
+    el.classList.remove('P', 'A', 'F', 'AC', 'tarde');
+    
+    // Aplicamos el nuevo color al contenedor "front" para que pinte todo el cuadro
+    const padre = el.parentElement; 
+    padre.classList.remove('P', 'A', 'F', 'AC', 'tarde');
+
+    if (v === 'P') padre.classList.add("P");
+    else if (v === 'A') padre.classList.add("A");
+    else if (v === 'F') padre.classList.add("F");
+    else if (v === 'AC') padre.classList.add("AC");
+    else if (!isNaN(v) && v !== '') padre.classList.add("tarde");
+}
+    function marcarFeriado() {
+    const d = prompt("Día del feriado (1-31):");
+    if (!d) return;
+    const c = document.getElementById('c-sel').value,
+          m = mS.value,
+          a = aS.value;
+
+    const fecha = new Date(a, m, d);
+    const nombreDia = dSemana[fecha.getDay()]; 
+
+    if (!confirm(`¿Marcar ${d}/${parseInt(m)+1} como FERIADO para la sede ${c}?`)) return;
+
+    empleados.filter(e => e.c === c).forEach(e => {
+        const esquema = (e.esquema || "LMXJV").trim();
+        
+        // Si el día está en su esquema (ej: 'X' de miércoles), le ponemos F
+        if (esquema.includes(nombreDia)) {
+            dbAsistencia.child(`${a}/${m}/${c}/${e.id}/${d}`).set('F');
+        }
+    });
+    // No hace falta renderAsist() manual si tenés un .on('value') escuchando, 
+    // pero si no, dejalo para refrescar la vista.
+    renderAsist();
+}
+    function limpiarDia() { const d = prompt("Día a limpiar:"); if(!d) return; const c = document.getElementById('c-sel').value, m = mS.value, a = aS.value; if(confirm("¿Borrar día?")) { empleados.filter(e => e.c === c).forEach(e => dbAsistencia.child(`${a}/${m}/${c}/${e.id}/${d}`).remove()); renderAsist(); }}
+
+    // --- LIQUIDACIÓN INTELIGENTE ---
+ function renderLiqBtns() {
+    const centros = ["TODOS", "CET_MANANA", "CET_TARDE", "CET_VESP", "CD", "REHAB"];
+    document.getElementById('btns-liq').innerHTML = centros.map(c => 
+        `<button class="btn btn-primary" onclick="centroLiqActivo='${c}';renderLiq()">${c.replace('_',' ')}</button>`
+    ).join('');
+    renderLiq();
+}
+async function renderLiq() {
+    const m = parseInt(mS.value), a = parseInt(aS.value);
+    const fSnap = await baseDb.child(`facturas_estado/${a}`).once('value');
+    const todoElAnio = fSnap.val() || {};
+    const ruta = centroLiqActivo === "TODOS" ? `${a}/${m}` : `${a}/${m}/${centroLiqActivo}`;
+    
+    dbAsistencia.child(ruta).on('value', snapshot => {
+        const snapshotData = snapshot.val() || {}; 
+        const diasEnMes = new Date(a, m + 1, 0).getDate();
+        const lista = empleados.filter(e => (centroLiqActivo === "TODOS" || e.c === centroLiqActivo) && !e.fechaBaja);
+
+        document.getElementById('b-liq').innerHTML = lista.map(e => {
+            const asistE = centroLiqActivo === "TODOS" ? (snapshotData[e.c] ? snapshotData[e.c][e.id] : {}) : (snapshotData[e.id] || {});
+            
+            let valorHora = parseFloat(e.vh) || 0;
+            let horasPorDia = parseFloat(e.h) || 0; 
+            
+            // Calculamos el tope de días según el esquema (LMXJV...)
+            let esquemaLimpio = (e.esquema || "").trim();
+            let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
+            const topeDiasMensuales = diasPorSemana * 4;
+
+            let horasTotalesAsistencia = 0;
+            let diasContadosAlTope = 0;
+            let contadorTardanzas = 0;
+
+            for (let d = 1; d <= diasEnMes; d++) {
+                let reg = asistE[d];
+                if (!reg) continue;
+
+                let esPresencia = false;
+                let horasDeHoy = horasPorDia;
+                const valorTexto = reg.toString().toUpperCase();
+                
+                // 1. Detección de presencia (Firma o P manual)
+                if (typeof reg === 'object' || valorTexto.startsWith('P') || valorTexto.startsWith('AC') || valorTexto.startsWith('F') || valorTexto.startsWith('T')) {
+                    esPresencia = true;
+
+                    // 2. Lógica de Reloj (Entrada y Salida)
+                    if (typeof reg === 'object') {
+                        // --- CONTROL DE ENTRADA ---
+                        if (reg.in && e.hIngreso) {
+                            let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
+                            if (difIn > 15 && difIn <= 60) {
+                                contadorTardanzas++;
+                                if (contadorTardanzas >= 3) { esPresencia = false; contadorTardanzas = 0; }
+                            } else if (difIn > 60) {
+                                // Descuento proporcional por cada hora tarde
+                                let horasTarde = Math.floor(difIn / 60);
+                                horasDeHoy -= horasTarde;
+                            }
+                        }
+
+                        // --- CONTROL DE SALIDA (EGRESO) ---
+                        // Asumimos que en el legajo tenés el campo e.hSalida
+                        if (reg.out && e.hEgreso) {
+                            let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso); // Teórica menos Real
+                            if (difOut > 15) {
+                                // Si se fue más de 15 min antes, descontamos las horas faltantes
+                                let horasAntes = Math.floor(difOut / 60);
+                                if (horasAntes > 0) horasDeHoy -= horasAntes;
+                            }
+                        }
+                    }
+                }
+
+                // Sumamos al total respetando el tope de días del contrato
+                if (esPresencia && diasContadosAlTope < topeDiasMensuales) {
+                    // Evitamos que las horas de hoy sean negativas por descuentos
+                    horasTotalesAsistencia += Math.max(0, horasDeHoy);
+                    diasContadosAlTope++;
+                }
+            }
+
+            let extras = parseFloat(asistE['EXT']) || 0;
+            let htFinal = horasTotalesAsistencia + extras;
+            let totalCalc = Math.round(htFinal * valorHora);
+            let pagado = (todoElAnio[m] && todoElAnio[m][e.c] && todoElAnio[m][e.c][e.id]);
+
+            return generarFilaLiq(e, htFinal.toFixed(1), totalCalc, pagado, valorHora, false, todoElAnio, m);
+        }).join('');
+    });
+}
+function generarFilaLiq(e, hs, tot, pagado, vh, congelado, todoElAnio, mesAct) {
+    let mesesDeuda = [];
+    for(let i = 0; i < mesAct; i++) {
+        if(!(todoElAnio[i] && todoElAnio[i][e.c] && todoElAnio[i][e.c][e.id])) {
+            mesesDeuda.push(meses[i].substring(0,3));
+        }
+    }
+    const deudaStr = mesesDeuda.join(', ');
+    
+    // Creamos una etiqueta pequeña si hay deuda
+    const badgeDeuda = deudaStr ? `<br><span style="color:red; font-size:10px;">Debe: ${deudaStr}</span>` : "";
+
+    return `<tr>
+        <td>
+            <b>${e.n}</b> ${congelado ? '🔒' : ''}
+            ${badgeDeuda} </td>
+        <td><small>${e.cuit || '-'}</small></td>
+        <td><b>${hs}</b> hs</td>
+        <td>$${vh}</td>
+        <td style="font-weight:bold; color:var(--cobalto)">$${tot.toLocaleString()}</td>
+        <td style="cursor:pointer;" onclick="toggleFactura('${e.id}')">${pagado ? '🟢' : '🔴'}</td>
+        <td><button class="btn btn-primary" onclick="enviarMail('${e.m}', '${e.n}', '${hs}', '${tot}', '${e.cbu}', '${deudaStr}')">✉️</button></td>
+    </tr>`;
+}
+function forzarNumero(texto) {
+    if (!texto) return 0;
+    // Eliminamos todo menos números y la última coma/punto decimal
+    let soloNumeros = texto.replace(/[^\d]/g, ''); 
+    // Si la factura usa centavos (ej: 00), los últimos dos dígitos son decimales
+    if (texto.includes(',')) {
+        let partes = texto.split(',');
+        let entero = partes[0].replace(/[^\d]/g, '');
+        let decimal = partes[1].substring(0, 2);
+        return parseFloat(entero + "." + decimal);
+    }
+    return parseFloat(soloNumeros) || 0;
+}
+
+function validarLogicaFactura(texto, montoEsperado, mesIndice) {
+    const TOLERANCIA = 2.0;
+    const nombreMes = meses[mesIndice].toLowerCase();
+    const numeroMes = (mesIndice + 1).toString().padStart(2, '0');
+
+    // --- NUEVA ESTRATEGIA: Buscar todos los montos posibles ---
+    // Esta regex busca patrones de dinero como 1.250,00 o 1250,00
+    const regexMontos = /(\d[\d.]*,\d{2})/g;
+    const coincidencias = texto.match(regexMontos);
+    
+    let montoPDF = 0;
+    if (coincidencias) {
+        // Convertimos todos a números y nos quedamos con el más grande
+        const valores = coincidencias.map(m => forzarNumero(m));
+        montoPDF = Math.max(...valores);
+    }
+
+    const montoOk = montoPDF >= (montoEsperado - TOLERANCIA);
+    const textoMinus = texto.toLowerCase();
+    const mesOk = textoMinus.includes(nombreMes) || textoMinus.includes(`/${numeroMes}/`);
+
+    return {
+        ok: montoOk && mesOk,
+        error: !montoOk ? `Detectado: $${montoPDF} | Esperado: $${montoEsperado}` : (!mesOk ? `Mes no hallado` : "")
+    };
+}
+async function validarMasivo(ev) {
+    ev.preventDefault();
+    const archivos = Array.from(ev.dataTransfer.files);
+    const mIndice = parseInt(document.getElementById('m-sel').value); 
+    const anio = document.getElementById('a-sel').value;
+    
+    let procesados = 0;
+    let errores = [];
+
+    for (const file of archivos) {
+        if (file.type !== "application/pdf") continue;
+        try {
+            const arrayBuffer = await file.buffer ? file.buffer : await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+            let texto = "";
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                texto += content.items.map(item => item.str).join(" ") + " ";
+            }
+
+            // 1. Buscamos el CUIT en el PDF
+            const cuitMatch = texto.match(/\b\d{2}-?\d{8}-?\d{1}\b/);
+            if (!cuitMatch) { errores.push(`${file.name}: No se encontró CUIT.`); continue; }
+            
+            const cuitL = cuitMatch[0].replace(/-/g, "");
+            const emp = empleados.find(e => e.cuit && e.cuit.replace(/-/g, "") === cuitL);
+
+            if (!emp) { errores.push(`${file.name}: CUIT ${cuitL} no existe en Legajos.`); continue; }
+
+            // 2. BUSQUEDA Y SUMA EN LA TABLA
+            // Buscamos todas las filas que tengan el nombre de este empleado
+            const filas = Array.from(document.querySelectorAll('#b-liq tr')).filter(tr => 
+                tr.innerText.includes(emp.n)
+            );
+
+            if (filas.length === 0) {
+                errores.push(`${emp.n}: No está en la lista actual.`);
+                continue;
+            }
+
+            // Sumamos los montos de las filas encontradas (por si tiene doble centro)
+            let montoEsperadoTotal = 0;
+            filas.forEach(f => {
+                // Usamos nuestra función forzarNumero para leer el "$ 1.234,00"
+                montoEsperadoTotal += forzarNumero(f.cells[4].innerText);
+            });
+
+            // 3. VALIDACIÓN
+            const res = validarLogicaFactura(texto, montoEsperadoTotal, mIndice);
+
+            if (res.ok) {
+                // Si la suma coincide, marcamos como pagado en Firebase para TODOS sus centros
+                const todosSusPuestos = empleados.filter(e => e.cuit && e.cuit.replace(/-/g, "") === cuitL);
+                for (const p of todosSusPuestos) {
+                    await baseDb.child(`facturas_estado/${anio}/${mIndice}/${p.c}/${p.id}`).set(true);
+                }
+                
+                // Ponemos verde a las filas que vemos en pantalla
+                filas.forEach(f => f.cells[5].innerHTML = '🟢');
+                procesados++;
+            } else {
+                errores.push(`${emp.n}: ${res.error}`);
+            }
+        } catch (e) { 
+            console.error(e);
+            errores.push(`${file.name}: Error al procesar.`); 
+        }
+    }
+
+    alert(`✅ Validadas: ${procesados}\n❌ Errores: ${errores.length}\n\n${errores.join('\n')}`);
+}
+    function toggleFactura(id) {
+        const m = mS.value, a = aS.value;
+        const emp = empleados.find(e => e.id === id);
+        const ref = baseDb.child(`facturas_estado/${a}/${m}/${emp.c}/${id}`);
+        ref.once('value', snap => { if(snap.exists()) ref.remove(); else ref.set(true); renderLiq(); });
+    }
+function enviarMail(mail, nom, hs, tot, cbu, deuda) {
+    const sub = encodeURIComponent("Liquidación Esencial Salud");
+    
+    // Limpiamos el total por si viene con el signo $ o puntos de miles
+    let totalLimpio = String(tot).replace(/[^0-9]/g, '');
+    let totalFormateado = parseInt(totalLimpio).toLocaleString('es-AR');
+
+    const mensaje = `Hola ${nom},\n\nTe envío el detalle de tu liquidación:\n\n- Horas: ${hs}\n- Total a facturar: $${totalFormateado}\n- CBU: ${cbu}${deuda ? '\n\n⚠️ IMPORTANTE: Debes facturas de: ' + deuda : ''}\n\nPor favor, enviá la factura para procesar el pago.\n\nSaludos!`;
+
+    const body = encodeURIComponent(mensaje);
+    
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${mail}&su=${sub}&body=${body}`);
+}
+    // --- INFORMES ---
+    function renderReportes() {
+        const m = mS.value, a = aS.value;
+        document.getElementById('rep-fecha-tit').innerText = `${meses[m].toUpperCase()} ${a}`;
+        dbAsistencia.child(`${a}/${m}`).once('value', snap => {
+            const dMes = snap.val() || {}; let tG = 0, pC = {}, hT = 0, pres = 0;
+            empleados.forEach(e => {
+                const dE = (dMes[e.c] && dMes[e.c][e.id]) || {};
+                Object.values(dE).forEach(v => { 
+                    hT++; 
+                    if(v==='P'||v==='AC'||v==='F') { 
+                        pres++; 
+                        let sub = (parseFloat(e.h)*e.vh)||0; tG += sub; pC[e.c] = (pC[e.c]||0) + sub;
+                    } 
+                });
+            });
+            document.getElementById('rep-total').innerText = `$${tG.toLocaleString('es-AR')}`;
+            document.getElementById('rep-presen').innerText = hT ? Math.round((pres/hT)*100)+"%" : "0%";
+            document.getElementById('rep-staff').innerText = empleados.length;
+            document.getElementById('rep-ausente').innerText = hT - pres;
+            document.getElementById('rep-centro-list').innerHTML = Object.entries(pC).map(([k,v])=>`<div><b>${k.replace('_',' ')}:</b> $${v.toLocaleString('es-AR')}</div>`).join('');
+            setTimeout(() => {
+                const ctx = document.getElementById('graficoSedes').getContext('2d');
+                if(miGrafico) miGrafico.destroy();
+                miGrafico = new Chart(ctx, { type:'doughnut', data:{ labels:Object.keys(pC), datasets:[{data:Object.values(pC), backgroundColor:['#1a2a6c','#f1c40f','#2ecc71','#e74c3c','#3498db']}]}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12}}}}});
+            }, 150);
+        });
+    }
+
+    function descargarPDF() { const opt = { margin: 0.5, filename: 'Informe.pdf', html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } }; html2pdf().set(opt).from(document.getElementById('pdf-area')).save(); }
+    
+    function enviarMsg() { const t = document.getElementById('chat-input').value; if(!t) return; dbChat.push({u: usuarioActivo, t: t}); document.getElementById('chat-input').value = ""; }
+
+    dbChat.on('value', snap => { 
+        const msgs = snap.val() || {}; 
+        document.getElementById('chat-msgs').innerHTML = Object.values(msgs).map(m => `<div class="msg ${m.u==='ADMIN'?'msg-admin':'msg-sec'}"><small><b>${m.u}</b></small><br>${m.t}</div>`).join(''); 
+        document.getElementById('chat-msgs').scrollTop = document.getElementById('chat-msgs').scrollHeight; 
+    });
+function imprimirPlanillaAsistencia() {
+    const c = centroLiqActivo;
+    if (c === "TODOS") return alert("Por favor, selecciona una sede específica.");
+    
+    const m = parseInt(mS.value), a = aS.value;
+    const d = prompt("Ingrese el día que desea imprimir (1-31):", new Date().getDate());
+    if (!d) return;
+
+    const fechaSeleccionada = new Date(a, m, d);
+    const nombreDia = dSemana[fechaSeleccionada.getDay()];
+
+    let subtitulo = c.includes("CET") ? "Centro Educacional Terapéutico" : 
+                    c.includes("CD") ? "Centro de Día" : 
+                    c.includes("REHAB") ? "Centro de Rehabilitación" : "Servicios de Salud";
+
+    let turno = c.includes("TARDE") ? "Tarde" : c.includes("VESP") ? "Vespertino" : "Mañana";
+
+    dbAsistencia.child(`${a}/${m}/${c}`).once('value', snap => {
+        const dataDia = snap.val() || {};
+        
+        let tablaHtml = `
+        <html>
+        <head>
+            <title>Planilla de Asistencia - ESENCIAL SRL</title>
+            <style>
+                body { font-family: 'Arial', sans-serif; padding: 20px; color: #333; }
+                .titulo { text-align: center; font-size: 24px; font-weight: bold; margin: 0; }
+                .subtitulo { text-align: center; font-size: 16px; margin: 5px 0 20px 0; border-bottom: 2px solid #000; padding-bottom: 10px; }
+                .info-line { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 10px; font-size: 14px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th { background-color: #f2f2f2; font-size: 11px; text-transform: uppercase; border: 1px solid #000; padding: 8px; }
+                td { border: 1px solid #000; padding: 6px; text-align: center; vertical-align: middle; }
+                .firma-img { height: 45px; max-width: 110px; object-fit: contain; }
+                .ausente-text { color: red; font-weight: bold; font-size: 12px; }
+                .feriado-text { color: blue; font-weight: bold; font-size: 12px; }
+                .nombre-prof { text-align: left; font-size: 11px; width: 25%; }
+            </style>
+        </head>
+        <body>
+            <div class="titulo">ESENCIAL SRL</div>
+            <div class="subtitulo">Modalidad: ${subtitulo} - Año: ${a}</div>
+            <div class="info-line">
+                <span>FECHA: ${d}/${m + 1}/${a} (${nombreDia})</span>
+                <span>TURNO: ${turno}</span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Profesional</th>
+                        <th>Profesión</th>
+                        <th>Entrada</th>
+                        <th>Firma Entrada</th>
+                        <th>Salida</th>
+                        <th>Firma Salida</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+        // Filtrar profesionales que debían estar ese día según esquema
+        const listaEmpleados = empleados.filter(e => {
+            const trabajaHoy = (e.esquema || "LMXJV").includes(nombreDia);
+            return e.c === c && trabajaHoy;
+        });
+        
+        listaEmpleados.forEach(e => {
+            const reg = (dataDia[e.id] && dataDia[e.id][d]) ? dataDia[e.id][d] : null;
+            let inHora = "--:--", outHora = "--:--", fIn = "", fOut = "";
+            let statusClass = "";
+
+            // LOGICA DE RELLENO AUTOMÁTICO PARA EL PASADO
+            if (reg && typeof reg === 'object') {
+                // Si hay firma (objeto), se muestra todo
+                inHora = reg.in || "--:--";
+                outHora = reg.out || "--:--";
+                fIn = reg.f_in ? `<img src="${reg.f_in}" class="firma-img">` : "";
+                fOut = reg.f_out ? `<img src="${reg.f_out}" class="firma-img">` : "";
+            } else if (reg === 'F') {
+                // Si marcaste Feriado
+                inHora = '<span class="feriado-text">FERIADO</span>';
+                fIn = "---"; fOut = "---"; outHora = "---";
+            } else if (reg === 'A' || (!reg)) {
+                // Si no hay nada o pusiste A, sale AUSENTE
+                inHora = '<span class="ausente-text">AUSENTE</span>';
+                fIn = "---"; fOut = "---"; outHora = "---";
+            } else if (reg === 'AC') {
+                inHora = '<b>JUSTIFICADO</b>';
+                fIn = "---"; fOut = "---"; outHora = "---";
+            }
+
+            tablaHtml += `
+                <tr>
+                    <td class="nombre-prof"><b>${e.n}</b></td>
+                    <td style="font-size:10px;">${e.profesion || 'S/D'}</td>
+                    <td>${inHora}</td>
+                    <td>${fIn}</td>
+                    <td>${outHora}</td>
+                    <td>${fOut}</td>
+                </tr>`;
+        });
+
+        tablaHtml += `</tbody></table>
+            <div style="margin-top: 30px; font-size: 10px; text-align: right;">
+                Documento de auditoría generado por Sistema de Gestión - Esencial Salud
+            </div>
+        </body></html>`;
+
+        const ventana = window.open('', '_blank');
+        ventana.document.write(tablaHtml);
+        ventana.document.close();
+        
+        setTimeout(() => { ventana.print(); }, 1000);
+    });
+}
+function congelarMesActual() {
+    const m = mS.value, a = aS.value, c = centroLiqActivo;
+    if(c === "TODOS") return alert("Seleccioná una sede");
+    
+    if(confirm("¿Congelar este mes? Esto guardará el Valor Hora y las Horas actuales como definitivas.")) {
+        const fotos = {};
+        document.querySelectorAll('#b-liq tr').forEach(fila => {
+            const nombre = fila.cells[0].innerText.split(' ')[0];
+            const emp = empleados.find(x => x.n === nombre);
+            if(emp) {
+                fotos[emp.id] = {
+                    hs: fila.cells[2].querySelector('b').innerText.split(' ')[0],
+                    total: parseInt(fila.cells[4].innerText.replace(/[^0-9]/g, '')),
+                    vh: parseInt(fila.cells[3].innerText.replace(/[^0-9]/g, ''))
+                };
+            }
+        });
+        baseDb.child(`liquidaciones_congeladas/${a}/${m}/${c}`).set(fotos).then(() => {
+            alert("Mes bloqueado satisfactoriamente.");
+            renderLiq();
+        });
+    }
+}
+function obtenerHorasEsquema(e, d, m, a) {
+    // CAMBIO CLAVE: En tu Firebase se llama 'e' (ej: "1,2,3,4,5")
+    if (!e || !e.e) return 0;
+    
+    const fecha = new Date(a, m, d);
+    const diaSemana = fecha.getDay(); // 0=D, 1=L, 2=M...
+    
+    // Convertimos tu string "1,2,3,4,5" en números
+    const esquema = e.e.split(',').map(Number);
+    
+    if (esquema.includes(diaSemana)) {
+        // CAMBIO CLAVE: En tu Firebase las horas se llaman 'hs'
+        return parseFloat(e.hs || 0); 
+    }
+    return 0;
+}
+
+function calcularDiferenciaMinutos(teorica, real) {
+    if (!teorica || !real) return 0;
+    // Separa horas y minutos de formatos como "08:00"
+    const [hT, mT] = teorica.split(':').map(Number);
+    const [hR, mR] = real.split(':').map(Number);
+    
+    // Calcula la diferencia total en minutos
+    const totalTeorico = (hT * 60) + mT;
+    const totalReal = (hR * 60) + mR;
+    
+    return totalReal - totalTeorico; 
+    // Si da positivo, es llegada tarde. Si da negativo, llegó temprano.
+}
+</script>
+</body>
+</html>

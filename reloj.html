@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Reloj de Firmas Pro - Esencial Salud</title>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+    <style>
+        :root { --cobalto: #1a2a6c; --oro: #f1c40f; --verde: #2ecc71; --gris: #f4f7f6; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--gris); text-align: center; overflow: hidden; height: 100vh; }
+        header { background: var(--cobalto); color: white; padding: 15px; font-weight: 800; }
+        .container { padding: 10px; max-width: 500px; margin: auto; }
+        
+        .selector-auditoria { background: #fff; padding: 10px; border-radius: 12px; margin-bottom: 10px; border: 2px solid var(--oro); box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .input-fecha { padding: 8px; font-size: 16px; border-radius: 8px; border: 1px solid #ccc; width: 80%; }
+
+        .grid-centros { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .btn-centro { background: white; color: var(--cobalto); padding: 25px 10px; font-size: 14px; border: 2px solid var(--cobalto); border-radius: 12px; font-weight: 700; cursor: pointer; }
+        
+        .btn-prof { background: white; width: 100%; padding: 15px; margin-bottom: 8px; border: 1px solid #ddd; border-radius: 10px; text-align: left; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+        #modal-firma { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
+        
+        canvas { 
+            border: 2px solid #555; 
+            background: #fff; 
+            cursor: crosshair; 
+            touch-action: none; 
+            border-radius: 8px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        .controles-firma { margin-top: 15px; display: flex; gap: 10px; }
+        .btn-f { padding: 12px 20px; font-size: 14px; color: white; border: none; border-radius: 8px; font-weight: 700; }
+    </style>
+</head>
+<body>
+
+<header>ESENCIAL SALUD - REGISTRO</header>
+
+<div class="container">
+    <div id="paso-centros">
+        <div class="selector-auditoria">
+            <small>FECHA DE REGISTRO:</small><br>
+            <input type="date" id="fecha-registro" class="input-fecha">
+        </div>
+        <div class="grid-centros">
+            <button class="btn-centro" onclick="seleccionarCentro('CET_MANANA')">CET - MAÑANA</button>
+            <button class="btn-centro" onclick="seleccionarCentro('CET_TARDE')">CET - TARDE</button>
+            <button class="btn-centro" onclick="seleccionarCentro('CD')">CENTRO DE DÍA</button>
+            <button class="btn-centro" onclick="seleccionarCentro('REHAB')">REHAB</button>
+        </div>
+    </div>
+
+    <div id="paso-profesionales" style="display:none; height: 80vh; overflow-y: auto;">
+        <button onclick="location.reload()" style="background:#666; color:white; padding:10px; margin-bottom:10px; width:100%; border:none; border-radius:8px;">⬅ VOLVER</button>
+        <div id="lista-prof"></div>
+    </div>
+</div>
+
+<div id="modal-firma">
+    <h2 id="nom-firma" style="margin:5px"></h2>
+    <p id="tipo-firma" style="font-weight:bold; color:var(--cobalto); margin:5px"></p>
+    <canvas id="canvas-firma" width="340" height="300"></canvas>
+    <div class="controles-firma">
+        <button class="btn-f" style="background:#666" onclick="cerrarFirma()">VOLVER</button>
+        <button class="btn-f" style="background:var(--oro); color:#333" onclick="limpiarCanvas()">BORRAR</button>
+        <button class="btn-f" style="background:var(--verde)" onclick="guardarFichaje()">CONFIRMAR</button>
+    </div>
+</div>
+
+<script>
+    // --- 1. FECHA POR DEFECTO (AJUSTE LOCAL) ---
+    const fechaHoy = new Date();
+    // Ajustamos a la fecha local en formato YYYY-MM-DD
+    const offset = fechaHoy.getTimezoneOffset() * 60000;
+    const fechaLocal = new Date(fechaHoy - offset).toISOString().split('T')[0];
+    document.getElementById('fecha-registro').value = fechaLocal;
+
+    // --- SEGURIDAD ---
+    const PIN_HABILITACION = "7788";
+    if (!localStorage.getItem('dispositivo_autorizado')) {
+        let check = prompt("SISTEMA BLOQUEADO. Ingrese PIN de habilitación:");
+        if (check === PIN_HABILITACION) localStorage.setItem('dispositivo_autorizado', 'true');
+        else document.body.innerHTML = "<h1>Acceso denegado.</h1>";
+    }
+
+    const firebaseConfig = { 
+        apiKey: "AIzaSyAugXXx_b_wKFByhDbLZslk2HA_UTzrzd8", 
+        authDomain: "clinicaintegral-5c488.firebaseapp.com", 
+        databaseURL: "https://clinicaintegral-5c488-default-rtdb.firebaseio.com", 
+        projectId: "clinicaintegral-5c488", 
+        storageBucket: "clinicaintegral-5c488.firebasestorage.app", 
+        messagingSenderId: "184090967634", 
+        appId: "1:184090967634:web:09715937b33ea48288698b" 
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database().ref('/SISTEMA_PERSONAL');
+
+    let empleados = [];
+    let centroActivo = "";
+    let profActivo = null;
+
+    db.child('empleados').on('value', snap => {
+        const val = snap.val();
+        empleados = val ? (Array.isArray(val) ? val : Object.values(val)) : [];
+    });
+
+    function seleccionarCentro(c) {
+        centroActivo = c;
+        document.getElementById('paso-centros').style.display = 'none';
+        document.getElementById('paso-profesionales').style.display = 'block';
+        const lista = document.getElementById('lista-prof');
+        lista.innerHTML = "";
+        empleados.filter(e => e.c === c).forEach(e => {
+            lista.innerHTML += `
+                <button class="btn-prof" onclick='abrirMóduloFirma(${JSON.stringify(e)})'>
+                    <div><b>${e.n}</b><br><small>${e.esp || 'Profesional'}</small></div>
+                    <span>🖋️</span>
+                </button>`;
+        });
+    }
+
+    function abrirMóduloFirma(emp) {
+        profActivo = emp;
+        const fVal = document.getElementById('fecha-registro').value;
+        const fechaE = new Date(fVal + "T12:00:00");
+        const d = fechaE.getDate(), m = fechaE.getMonth(), a = fechaE.getFullYear();
+        
+        document.getElementById('nom-firma').innerText = emp.n;
+        db.child(`asistencia/${a}/${m}/${centroActivo}/${emp.id}/${d}`).once('value', snap => {
+            const data = snap.val();
+            document.getElementById('tipo-firma').innerText = (data && data.in) ? "FIRMA DE SALIDA" : "FIRMA DE ENTRADA";
+            document.getElementById('modal-firma').style.display = 'flex';
+            limpiarCanvas();
+        });
+    }
+
+    const canvas = document.getElementById('canvas-firma');
+    const ctx = canvas.getContext('2d');
+    let dibujando = false;
+    ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#1a2a6c';
+
+    function obtenerPosicion(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clienteX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clienteY = e.clientY || (e.touches && e.touches[0].clientY);
+        return { x: clienteX - rect.left, y: clienteY - rect.top };
+    }
+
+    function iniciar(e) { dibujando = true; const pos = obtenerPosicion(e); ctx.beginPath(); ctx.moveTo(pos.x, pos.y); }
+    function mover(e) { if (!dibujando) return; e.preventDefault(); const pos = obtenerPosicion(e); ctx.lineTo(pos.x, pos.y); ctx.stroke(); }
+    function parar() { dibujando = false; }
+
+    canvas.addEventListener('mousedown', iniciar); canvas.addEventListener('mousemove', mover); window.addEventListener('mouseup', parar);
+    canvas.addEventListener('touchstart', iniciar, {passive: false}); canvas.addEventListener('touchmove', mover, {passive: false}); canvas.addEventListener('touchend', parar);
+
+    function limpiarCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+    function cerrarFirma() { document.getElementById('modal-firma').style.display = 'none'; }
+
+    function guardarFichaje() {
+        const firmaImg = canvas.toDataURL();
+        const fVal = document.getElementById('fecha-registro').value;
+        const fechaE = new Date(fVal + "T12:00:00");
+        const d = fechaE.getDate(), m = fechaE.getMonth(), a = fechaE.getFullYear(); // AÑO AUTOMÁTICO
+        
+        const ahora = new Date();
+        const hora = ahora.getHours() + ":" + ahora.getMinutes().toString().padStart(2, '0');
+        const ref = db.child(`asistencia/${a}/${m}/${centroActivo}/${profActivo.id}/${d}`);
+
+        ref.once('value', snap => {
+            const data = snap.val() || {};
+            // Guardamos firma e ingreso/salida según corresponda
+            if(!data.in) {
+                ref.update({ in: hora, f_in: firmaImg, val: 'P' }).then(() => finalizar());
+            } else {
+                ref.update({ out: hora, f_out: firmaImg }).then(() => finalizar());
+            }
+        });
+    }
+
+    function finalizar() {
+        alert("¡Firma guardada correctamente!");
+        location.reload();
+    }
+</script>
+</body>
+</html>
