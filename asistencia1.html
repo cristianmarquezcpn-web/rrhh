@@ -55,6 +55,29 @@
     
     table { border-collapse: collapse; width: 100%; } /* Por defecto al 100% para Liquidación */
     th, td { border: 1px solid #edf2f7; padding: 8px; text-align: center; }
+/* Efecto de borde azul al arrastrar facturas */
+.drag-over {
+    outline: 3px dashed #3498db !important;
+    outline-offset: -5px;
+    background-color: rgba(52, 152, 219, 0.1) !important;
+    position: relative;
+}
+
+/* Opcional: un cartelito que flote sobre la tabla al arrastrar */
+.drag-over::after {
+    content: "🚀 SOLTÁ LAS FACTURAS AQUÍ";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-weight: bold;
+    color: #1a2a6c;
+    background: rgba(255,255,255,0.8);
+    padding: 10px 20px;
+    border-radius: 20px;
+    pointer-events: none;
+    z-index: 10;
+}
 
     /* ESTILOS ESPECIFICOS PARA ASISTENCIA (LOS CUADRADITOS) */
     #b-asist-table { width: max-content !important; } /* Solo la tabla de asistencia se desborda a lo largo */
@@ -163,8 +186,8 @@
             </span>
         </div>
 
-        <table ondragover="event.preventDefault()" ondrop="validarMasivo(event)">
-            <thead>
+        <table id="tabla-liq" ondragover="event.preventDefault(); this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="this.classList.remove('drag-over'); validarMasivo(event)"> 
+	    <thead>
                 <tr>
                     <th>Profesional</th>
                     <th>CUIT</th>
@@ -220,7 +243,7 @@
     let miGrafico = null;
     let centroLiqActivo = 'CET_MANANA';
     let datosAsistencia = {};
-    
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
     function checkPin(val) { 
         if(val.length === 4) { 
             if(val === PIN_ADMIN || val === PIN_SECRETARIA) { 
@@ -800,22 +823,31 @@ function imprimirPlanillaAsistencia() {
     dbAsistencia.child(`${a}/${m}/${c}`).once('value', snap => {
         const dataDia = snap.val() || {};
         
+        const listaEmpleados = empleados.filter(e => {
+            const trabajaHoy = (e.esquema || "LMXJV").includes(nombreDia);
+            const tieneRegistro = (dataDia[e.id] && dataDia[e.id][d]);
+            return e.c === c && (trabajaHoy || tieneRegistro);
+        });
+        
+        listaEmpleados.sort((a, b) => a.n.localeCompare(b.n));
+
         let tablaHtml = `
         <html>
         <head>
             <title>Planilla de Asistencia - ESENCIAL SRL</title>
             <style>
                 body { font-family: 'Arial', sans-serif; padding: 20px; color: #333; }
-                .titulo { text-align: center; font-size: 24px; font-weight: bold; margin: 0; }
-                .subtitulo { text-align: center; font-size: 16px; margin: 5px 0 20px 0; border-bottom: 2px solid #000; padding-bottom: 10px; }
-                .info-line { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 10px; font-size: 14px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                th { background-color: #f2f2f2; font-size: 11px; text-transform: uppercase; border: 1px solid #000; padding: 8px; }
-                td { border: 1px solid #000; padding: 6px; text-align: center; vertical-align: middle; }
-                .firma-img { height: 45px; max-width: 110px; object-fit: contain; }
-                .ausente-text { color: red; font-weight: bold; font-size: 12px; }
-                .feriado-text { color: blue; font-weight: bold; font-size: 12px; }
-                .nombre-prof { text-align: left; font-size: 11px; width: 25%; }
+                .titulo { text-align: center; font-size: 22px; font-weight: bold; margin: 0; }
+                .subtitulo { text-align: center; font-size: 15px; margin: 5px 0 15px 0; border-bottom: 2px solid #000; padding-bottom: 8px; }
+                .info-line { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 8px; font-size: 13px; }
+                table { width: 100%; border-collapse: collapse; }
+                th { background-color: #f2f2f2; font-size: 10px; border: 1px solid #000; padding: 5px; text-transform: uppercase; }
+                td { border: 1px solid #000; padding: 4px; text-align: center; vertical-align: middle; }
+                .firma-img { height: 38px; max-width: 90px; object-fit: contain; }
+                .sello-img { height: 50px; max-width: 110px; object-fit: contain; }
+                .ausente-text { color: red; font-weight: bold; font-size: 10px; }
+                .nombre-prof { text-align: left; font-size: 10px; width: 22%; line-height: 1; }
+                .fuera-esquema { font-size: 8px; color: #666; font-style: italic; }
             </style>
         </head>
         <body>
@@ -834,54 +866,54 @@ function imprimirPlanillaAsistencia() {
                         <th>Firma Entrada</th>
                         <th>Salida</th>
                         <th>Firma Salida</th>
+                        <th>Sello Profes.</th>
                     </tr>
                 </thead>
                 <tbody>`;
 
-        // Filtrar profesionales que debían estar ese día según esquema
-        const listaEmpleados = empleados.filter(e => {
-            const trabajaHoy = (e.esquema || "LMXJV").includes(nombreDia);
-            return e.c === c && trabajaHoy;
-        });
-        
         listaEmpleados.forEach(e => {
             const reg = (dataDia[e.id] && dataDia[e.id][d]) ? dataDia[e.id][d] : null;
-            let inHora = "--:--", outHora = "--:--", fIn = "", fOut = "";
-            let statusClass = "";
+            const esExtra = !(e.esquema || "LMXJV").includes(nombreDia);
+            
+            // URL configurada para tu repositorio
+            const urlSello = `https://raw.githubusercontent.com/cristianmarquezcpn-web/rrhh/main/sellos/${e.id}.png`;
 
-            // LOGICA DE RELLENO AUTOMÁTICO PARA EL PASADO
+            let inH = "--:--", outH = "--:--", fI = "", fO = "";
+
             if (reg && typeof reg === 'object') {
-                // Si hay firma (objeto), se muestra todo
-                inHora = reg.in || "--:--";
-                outHora = reg.out || "--:--";
-                fIn = reg.f_in ? `<img src="${reg.f_in}" class="firma-img">` : "";
-                fOut = reg.f_out ? `<img src="${reg.f_out}" class="firma-img">` : "";
+                inH = reg.in || "--:--";
+                outH = reg.out || "--:--";
+                fI = reg.f_in ? `<img src="${reg.f_in}" class="firma-img">` : "";
+                fO = reg.f_out ? `<img src="${reg.f_out}" class="firma-img">` : "";
+            } else if (reg === 'P' || reg === 'p') {
+                inH = "PRESENTE"; fI = "________________"; 
             } else if (reg === 'F') {
-                // Si marcaste Feriado
-                inHora = '<span class="feriado-text">FERIADO</span>';
-                fIn = "---"; fOut = "---"; outHora = "---";
-            } else if (reg === 'A' || (!reg)) {
-                // Si no hay nada o pusiste A, sale AUSENTE
-                inHora = '<span class="ausente-text">AUSENTE</span>';
-                fIn = "---"; fOut = "---"; outHora = "---";
+                inH = "FERIADO";
             } else if (reg === 'AC') {
-                inHora = '<b>JUSTIFICADO</b>';
-                fIn = "---"; fOut = "---"; outHora = "---";
+                inH = "JUSTIFICADO";
+            } else {
+                inH = '<span class="ausente-text">AUSENTE</span>';
             }
 
             tablaHtml += `
                 <tr>
-                    <td class="nombre-prof"><b>${e.n}</b></td>
-                    <td style="font-size:10px;">${e.profesion || 'S/D'}</td>
-                    <td>${inHora}</td>
-                    <td>${fIn}</td>
-                    <td>${outHora}</td>
-                    <td>${fOut}</td>
+                    <td class="nombre-prof">
+                        <b>${e.n}</b> 
+                        ${esExtra ? '<br><span class="fuera-esquema">(Servicio Extra)</span>' : ''}
+                    </td>
+                    <td style="font-size:9px;">${e.profesion || '-'}</td>
+                    <td style="font-size:10px;">${inH}</td>
+                    <td>${fI}</td>
+                    <td style="font-size:10px;">${outH}</td>
+                    <td>${fO}</td>
+                    <td>
+                        <img src="${urlSello}" class="sello-img" onerror="this.style.display='none'">
+                    </td>
                 </tr>`;
         });
 
         tablaHtml += `</tbody></table>
-            <div style="margin-top: 30px; font-size: 10px; text-align: right;">
+            <div style="margin-top: 15px; font-size: 9px; text-align: right;">
                 Documento de auditoría generado por Sistema de Gestión - Esencial Salud
             </div>
         </body></html>`;
@@ -889,7 +921,6 @@ function imprimirPlanillaAsistencia() {
         const ventana = window.open('', '_blank');
         ventana.document.write(tablaHtml);
         ventana.document.close();
-        
         setTimeout(() => { ventana.print(); }, 1000);
     });
 }
