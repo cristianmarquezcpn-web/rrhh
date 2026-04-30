@@ -808,9 +808,8 @@ function imprimirPlanillaAsistencia() {
     const c = centroLiqActivo;
     if (c === "TODOS") return alert("Por favor, selecciona una sede específica.");
     
-    // Tomamos mes y año de los selects para asegurar consistencia de datos antiguos
     const m = parseInt(mS.value), a = aS.value;
-    const d = prompt("Ingrese el día que desea recuperar e imprimir (1-31):", new Date().getDate());
+    const d = prompt("Ingrese el día que desea imprimir (1-31):", new Date().getDate());
     if (!d) return;
 
     const fechaSeleccionada = new Date(a, m, d);
@@ -822,7 +821,6 @@ function imprimirPlanillaAsistencia() {
 
     let turno = c.includes("TARDE") ? "Tarde" : c.includes("VESP") ? "Vespertino" : "Mañana";
 
-    // Búsqueda robusta en Firebase
     dbAsistencia.child(`${a}/${m}/${c}`).once('value', snap => {
         const dataDia = snap.val() || {};
         
@@ -839,98 +837,59 @@ function imprimirPlanillaAsistencia() {
         <head>
             <title>Planilla Auditoría - ${d}-${m+1}-${a}</title>
             <style>
-                /* Forzamos a la impresora a respetar los colores y mezclas */
                 @media print { 
                     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-                    .sello-img { mix-blend-mode: multiply !important; }
+                    .sello-img { mix-blend-mode: multiply !important; display: block !important; }
                 }
                 
                 body { font-family: 'Arial', sans-serif; padding: 10px; color: #000; }
-                .titulo { text-align: center; font-size: 24px; font-weight: bold; margin: 0; }
-                .subtitulo { text-align: center; font-size: 16px; margin: 5px 0 10px 0; border-bottom: 2px solid #000; padding-bottom: 5px; }
-                
                 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-                th { background-color: #eee; font-size: 11px; border: 1px solid #000; padding: 5px; text-transform: uppercase; }
-                td { border: 1px solid #000; padding: 0; text-align: center; vertical-align: middle; position: relative; }
-                
-                /* Altura del renglón aumentada para soportar imágenes más grandes */
-                .renglon-asistencia { height: 165px; }
+                th { background-color: #eee; font-size: 11px; border: 1px solid #000; padding: 5px; }
+                td { border: 1px solid #000; padding: 0; text-align: center; vertical-align: middle; position: relative; height: 160px; }
                 
                 .espacio-firma {
-                    position: relative;
-                    width: 100%;
-                    height: 100%;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    overflow: hidden; /* Mantiene todo dentro de la celda */
+                    position: relative; width: 100%; height: 100%;
+                    display: flex; justify-content: center; align-items: center;
                 }
 
-                /* SELLO: TAMAÑO MAXI Y FONDO INTEGRADO */
                 .sello-img { 
-                    height: 155px; /* Aumentado a tamaño Maxi */
-                    width: auto;
-                    max-width: 190px; 
-                    position: absolute;
-                    z-index: 1; /* Fondo */
-                    
-                    /* EL TRUCO REFORZADO PARA QUE PAREZCA PARTE DE LA HOJA */
-                    mix-blend-mode: multiply !important; 
-                    background-color: transparent !important;
-                    
-                    opacity: 0.85; /* Un toque de transparencia para realismo */
-                    filter: contrast(1.2) brightness(1.05); /* Resalta la tinta */
+                    height: 150px; width: auto; max-width: 180px; 
+                    position: absolute; z-index: 1;
+                    mix-blend-mode: multiply; opacity: 0.85;
                 }
 
-                /* FIRMA: MÁS GRANDE Y DESPLAZADA HACIA ARRIBA */
                 .firma-img { 
-                    height: 100px; /* Firma más grande */
-                    width: auto;
-                    max-width: 160px; 
-                    position: absolute;
-                    z-index: 2; /* Por encima del sello */
-                    
-                    top: 8px; /* FIJAMOS LA FIRMA ARRIBA PARA NO TAPAR EL SELLO */
-                    
-                    object-fit: contain;
-                    /* Pequeña sombra blanca detrás de la firma para que resalte si cruza el sello */
-                    filter: drop-shadow(0px 0px 1px rgba(255,255,255,0.8)); 
+                    height: 100px; width: auto; max-width: 150px; 
+                    position: absolute; z-index: 5;
+                    top: 10px; /* La firma arriba para no tapar datos del sello */
                 }
 
-                /* Línea para firma manual cuando está presente */
-                .linea-manual {
-                    width: 85%;
-                    border-bottom: 2px solid black;
-                    position: absolute;
-                    top: 40px; /* Altura similar a donde iría la firma digital */
-                    z-index: 2;
-                }
-
-                .nombre-prof { text-align: left; font-size: 12px; padding-left: 8px !important; width: 22%; font-weight: bold; overflow: hidden; text-overflow: ellipsis; }
+                .nombre-prof { text-align: left; font-size: 12px; padding-left: 8px !important; font-weight: bold; }
             </style>
         </head>
         <body>
-            <div class="titulo">ESENCIAL SRL</div>
-            <div class="subtitulo">${subtitulo} - Año: ${a}</div>
-            <div style="display:flex; justify-content:space-between; font-weight:bold; margin-bottom:10px; font-size:12px;">
-                <span>FECHA: ${d}/${m+1}/${a} (${nombreDia})</span>
+            <h2 style="text-align:center; margin:0;">ESENCIAL SRL</h2>
+            <p style="text-align:center; margin:5px 0; border-bottom:2px solid #000; padding-bottom:5px;">${subtitulo} - ${a}</p>
+            <div style="display:flex; justify-content:space-between; font-weight:bold; margin-bottom:10px;">
+                <span>FECHA: ${d}/${m+1}/${a}</span>
                 <span>TURNO: ${turno}</span>
             </div>
             <table>
                 <thead>
                     <tr>
-                        <th style="width:22%;">Profesional</th>
-                        <th style="width:15%;">Profesión</th>
+                        <th style="width:25%;">Profesional</th>
                         <th style="width:10%;">Entrada</th>
-                        <th style="width:21.5%;">Firma / Sello Entrada</th>
+                        <th style="width:25%;">Firma Entrada</th>
                         <th style="width:10%;">Salida</th>
-                        <th style="width:21.5%;">Firma / Sello Salida</th>
+                        <th style="width:25%;">Firma Salida</th>
                     </tr>
                 </thead>
                 <tbody>`;
 
         listaEmpleados.forEach(e => {
             const reg = (dataDia[e.id] && dataDia[e.id][d]) ? dataDia[e.id][d] : null;
+            
+            // RUTA DE GITHUB RE-VERIFICADA
             const urlSello = `https://raw.githubusercontent.com/cristianmarquezcpn-web/rrhh/main/sellos/${e.id}.png`;
 
             let inH = "--:--", outH = "--:--", fI = "", fO = "";
@@ -938,26 +897,22 @@ function imprimirPlanillaAsistencia() {
             if (reg && typeof reg === 'object') {
                 inH = reg.in || "--:--";
                 outH = reg.out || "--:--";
-                fI = reg.f_in ? `<img src="${reg.f_in}" class="firma-img">` : "";
-                fO = reg.f_out ? `<img src="${reg.f_out}" class="firma-img">` : "";
+                // Verificamos si la firma existe en el registro
+                if(reg.f_in) fI = `<img src="${reg.f_in}" class="firma-img">`;
+                if(reg.f_out) fO = `<img src="${reg.f_out}" class="firma-img">`;
             } else if (reg === 'P' || reg === 'p') {
-                inH = "PRESENTE"; 
-                fI = `<div class="linea-manual"></div>`;
-                outH = "--:--"; 
-                fO = `<div class="linea-manual"></div>`;
-            } else {
-                inH = reg === 'AC' ? "JUSTIFICADO" : reg === 'F' ? "FERIADO" : reg === 'A' ? "AUSENTE" : '<span style="color:red; font-weight:bold;">AUSENTE</span>';
+                inH = "PRESENTE";
             }
 
-            const imgSello = `<img src="${urlSello}" class="sello-img" onerror="this.style.display='none'">`;
+            // El sello siempre se intenta cargar
+            const imgSello = `<img src="${urlSello}" class="sello-img" onerror="console.log('Falta sello de: ${e.n}')">`;
 
             tablaHtml += `
-                <tr class="renglon-asistencia">
+                <tr>
                     <td class="nombre-prof">${e.n}</td>
-                    <td style="font-size:10px;">${e.profesion || '-'}</td>
-                    <td style="font-size:12px; font-weight:bold;">${inH}</td>
+                    <td>${inH}</td>
                     <td><div class="espacio-firma">${imgSello}${fI}</div></td>
-                    <td style="font-size:12px; font-weight:bold;">${outH}</td>
+                    <td>${outH}</td>
                     <td><div class="espacio-firma">${imgSello}${fO}</div></td>
                 </tr>`;
         });
@@ -967,7 +922,8 @@ function imprimirPlanillaAsistencia() {
         const ventana = window.open('', '_blank');
         ventana.document.write(tablaHtml);
         ventana.document.close();
-        setTimeout(() => { ventana.print(); }, 1000);
+        // Damos 1.5 segundos para que carguen las imágenes de GitHub antes de imprimir
+        setTimeout(() => { ventana.print(); }, 1500);
     });
 }
 function congelarMesActual() {
