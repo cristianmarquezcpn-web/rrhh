@@ -805,11 +805,16 @@ function enviarMail(mail, nom, hs, tot, cbu, deuda) {
         document.getElementById('chat-msgs').scrollTop = document.getElementById('chat-msgs').scrollHeight; 
     });
 function imprimirPlanillaAsistencia() {
+    // 1. Verificación de seguridad para evitar el error de "initialization"
+    if (typeof mS === 'undefined' || typeof aS === 'undefined') {
+        return alert("Error: Los selectores de fecha no están listos. Recargue la página.");
+    }
+
     const c = centroLiqActivo;
     if (c === "TODOS") return alert("Por favor, selecciona una sede específica.");
     
     const m = parseInt(mS.value), a = aS.value;
-    const d = prompt("Ingrese el día que desea imprimir (1-31):", new Date().getDate());
+    const d = prompt("Ingrese el día que desea recuperar e imprimir (1-31):", new Date().getDate());
     if (!d) return;
 
     const fechaSeleccionada = new Date(a, m, d);
@@ -837,59 +842,68 @@ function imprimirPlanillaAsistencia() {
         <head>
             <title>Planilla Auditoría - ${d}-${m+1}-${a}</title>
             <style>
+                /* Forzamos que el navegador use el modo de mezcla al imprimir */
                 @media print { 
                     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-                    .sello-img { mix-blend-mode: multiply !important; display: block !important; }
+                    .sello-img { mix-blend-mode: multiply !important; }
                 }
                 
-                body { font-family: 'Arial', sans-serif; padding: 10px; color: #000; }
+                body { font-family: 'Arial', sans-serif; padding: 10px; }
                 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
                 th { background-color: #eee; font-size: 11px; border: 1px solid #000; padding: 5px; }
-                td { border: 1px solid #000; padding: 0; text-align: center; vertical-align: middle; position: relative; height: 160px; }
+                td { border: 1px solid #000; padding: 0; text-align: center; height: 160px; position: relative; vertical-align: middle; }
                 
                 .espacio-firma {
                     position: relative; width: 100%; height: 100%;
                     display: flex; justify-content: center; align-items: center;
                 }
 
+                /* SELLO: Gigante y de fondo */
                 .sello-img { 
-                    height: 150px; width: auto; max-width: 180px; 
+                    height: 155px; width: auto; max-width: 190px; 
                     position: absolute; z-index: 1;
-                    mix-blend-mode: multiply; opacity: 0.85;
+                    mix-blend-mode: multiply; /* Para que parezca tinta sobre papel */
+                    opacity: 0.9;
                 }
 
+                /* FIRMA: Más grande y arriba para no tapar el centro del sello */
                 .firma-img { 
-                    height: 100px; width: auto; max-width: 150px; 
-                    position: absolute; z-index: 5;
-                    top: 10px; /* La firma arriba para no tapar datos del sello */
+                    height: 110px; width: auto; max-width: 160px; 
+                    position: absolute; z-index: 2;
+                    top: 5px; 
+                    filter: drop-shadow(0px 0px 1px white);
                 }
 
-                .nombre-prof { text-align: left; font-size: 12px; padding-left: 8px !important; font-weight: bold; }
+                .linea-manual {
+                    width: 80%; border-bottom: 2px solid black;
+                    position: absolute; top: 50%; z-index: 3;
+                }
+
+                .nombre-prof { text-align: left; font-size: 11px; padding-left: 5px; font-weight: bold; }
             </style>
         </head>
         <body>
-            <h2 style="text-align:center; margin:0;">ESENCIAL SRL</h2>
-            <p style="text-align:center; margin:5px 0; border-bottom:2px solid #000; padding-bottom:5px;">${subtitulo} - ${a}</p>
-            <div style="display:flex; justify-content:space-between; font-weight:bold; margin-bottom:10px;">
-                <span>FECHA: ${d}/${m+1}/${a}</span>
+            <div style="text-align:center; font-size:20px; font-weight:bold;">ESENCIAL SRL</div>
+            <div style="text-align:center; border-bottom:2px solid #000; margin-bottom:5px; font-size:14px;">${subtitulo} - ${a}</div>
+            <div style="display:flex; justify-content:space-between; font-weight:bold; margin-bottom:10px; font-size:12px;">
+                <span>FECHA: ${d}/${m+1}/${a} (${nombreDia})</span>
                 <span>TURNO: ${turno}</span>
             </div>
             <table>
                 <thead>
                     <tr>
-                        <th style="width:25%;">Profesional</th>
+                        <th style="width:20%;">Profesional</th>
+                        <th style="width:10%;">Profesión</th>
                         <th style="width:10%;">Entrada</th>
-                        <th style="width:25%;">Firma Entrada</th>
+                        <th style="width:25%;">Firma / Sello Entrada</th>
                         <th style="width:10%;">Salida</th>
-                        <th style="width:25%;">Firma Salida</th>
+                        <th style="width:25%;">Firma / Sello Salida</th>
                     </tr>
                 </thead>
                 <tbody>`;
 
         listaEmpleados.forEach(e => {
             const reg = (dataDia[e.id] && dataDia[e.id][d]) ? dataDia[e.id][d] : null;
-            
-            // RUTA DE GITHUB RE-VERIFICADA
             const urlSello = `https://raw.githubusercontent.com/cristianmarquezcpn-web/rrhh/main/sellos/${e.id}.png`;
 
             let inH = "--:--", outH = "--:--", fI = "", fO = "";
@@ -897,22 +911,23 @@ function imprimirPlanillaAsistencia() {
             if (reg && typeof reg === 'object') {
                 inH = reg.in || "--:--";
                 outH = reg.out || "--:--";
-                // Verificamos si la firma existe en el registro
-                if(reg.f_in) fI = `<img src="${reg.f_in}" class="firma-img">`;
-                if(reg.f_out) fO = `<img src="${reg.f_out}" class="firma-img">`;
+                fI = reg.f_in ? `<img src="${reg.f_in}" class="firma-img">` : "";
+                fO = reg.f_out ? `<img src="${reg.f_out}" class="firma-img">` : "";
             } else if (reg === 'P' || reg === 'p') {
-                inH = "PRESENTE";
+                inH = "PRESENTE"; 
+                fI = `<div class="linea-manual"></div>`;
+                fO = `<div class="linea-manual"></div>`;
             }
 
-            // El sello siempre se intenta cargar
-            const imgSello = `<img src="${urlSello}" class="sello-img" onerror="console.log('Falta sello de: ${e.n}')">`;
+            const imgSello = `<img src="${urlSello}" class="sello-img" onerror="this.style.display='none'">`;
 
             tablaHtml += `
                 <tr>
                     <td class="nombre-prof">${e.n}</td>
-                    <td>${inH}</td>
+                    <td style="font-size:9px;">${e.profesion || '-'}</td>
+                    <td style="font-size:11px; font-weight:bold;">${inH}</td>
                     <td><div class="espacio-firma">${imgSello}${fI}</div></td>
-                    <td>${outH}</td>
+                    <td style="font-size:11px; font-weight:bold;">${outH}</td>
                     <td><div class="espacio-firma">${imgSello}${fO}</div></td>
                 </tr>`;
         });
@@ -922,7 +937,7 @@ function imprimirPlanillaAsistencia() {
         const ventana = window.open('', '_blank');
         ventana.document.write(tablaHtml);
         ventana.document.close();
-        // Damos 1.5 segundos para que carguen las imágenes de GitHub antes de imprimir
+        // Aumentamos a 1.5 segundos para que carguen bien las imágenes antes de imprimir
         setTimeout(() => { ventana.print(); }, 1500);
     });
 }
