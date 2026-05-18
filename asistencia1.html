@@ -305,7 +305,7 @@ function renderLegajos() {
         return `
             <tr>
                 <td><input onchange="upd(${i},'n',this.value)" value="${e.n || ''}" style="width:100px" title="Nombre"></td>
-				<td><input onchange="upd(${i},'email',this.value)" value="${e.email || ''}" style="width:150px" title="Email"></td>
+				<td><input onchange="upd(${i},'m',this.value)" value="${e.m || ''}" style="width:90%" title="Email"></td>
                 <td><input onchange="upd(${i},'profesion',this.value)" value="${e.profesion || ''}" placeholder="Ej: Psicólogo" style="width:80px"></td>
                 <td><input type="time" onchange="upd(${i},'hIngreso',this.value)" value="${e.hIngreso || '08:00'}" style="width:75px"></td>
                 <td style="font-weight:bold; color:var(--cobalto); text-align:center">${hSalida}</td>
