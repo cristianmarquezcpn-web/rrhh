@@ -543,7 +543,9 @@ async function renderLiq() {
     dbAsistencia.child(ruta).on('value', snapshot => {
         const snapshotData = snapshot.val() || {}; 
         const diasEnMes = new Date(a, m + 1, 0).getDate();
-        const lista = empleados.filter(e => (centroLiqActivo === "TODOS" || e.c === centroLiqActivo) && !e.fechaBaja);
+        const listaAMostrar = empleados.filter(e => 
+        (centroLiqActivo === "TODOS" || e.c === centroLiqActivo) && !e.fechaBaja);
+
 
         document.getElementById('b-liq').innerHTML = lista.map(e => {
             const asistE = centroLiqActivo === "TODOS" ? (snapshotData[e.c] ? snapshotData[e.c][e.id] : {}) : (snapshotData[e.id] || {});
