@@ -536,6 +536,8 @@ function renderLiqBtns() {
 }
 async function renderLiq() {
     const m = parseInt(mS.value), a = parseInt(aS.value);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+    
     const fSnap = await baseDb.child(`facturas_estado/${a}`).once('value');
     const todoElAnio = fSnap.val() || {};
     const ruta = centroLiqActivo === "TODOS" ? `${a}/${m}` : `${a}/${m}/${centroLiqActivo}`;
@@ -543,9 +545,11 @@ async function renderLiq() {
     dbAsistencia.child(ruta).on('value', snapshot => {
         const snapshotData = snapshot.val() || {}; 
         const diasEnMes = new Date(a, m + 1, 0).getDate();
-        const listaAMostrar = empleados.filter(e => 
-        (centroLiqActivo === "TODOS" || e.c === centroLiqActivo) && !e.fechaBaja);
-
+        
+        // CORREGIDO: Se unificó el nombre a "lista" para que coincida con el .map() de abajo
+        const lista = empleados.filter(e => 
+            (centroLiqActivo === "TODOS" || e.c === centroLiqActivo) && !e.fechaBaja
+        );
 
         document.getElementById('b-liq').innerHTML = lista.map(e => {
             const asistE = centroLiqActivo === "TODOS" ? (snapshotData[e.c] ? snapshotData[e.c][e.id] : {}) : (snapshotData[e.id] || {});
@@ -590,7 +594,6 @@ async function renderLiq() {
                         }
 
                         // --- CONTROL DE SALIDA (EGRESO) ---
-                        // Asumimos que en el legajo tenés el campo e.hSalida
                         if (reg.out && e.hEgreso) {
                             let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso); // Teórica menos Real
                             if (difOut > 15) {
@@ -613,7 +616,20 @@ async function renderLiq() {
             let extras = parseFloat(asistE['EXT']) || 0;
             let htFinal = horasTotalesAsistencia + extras;
             let totalCalc = Math.round(htFinal * valorHora);
-            let pagado = (todoElAnio[m] && todoElAnio[m][e.c] && todoElAnio[m][e.c][e.id]);
+            
+            // CORREGIDO: Validación segura de estado de pago para evitar roturas en "TODOS"
+            let pagado = false;
+            try {
+                if (todoElAnio[m]) {
+                    if (todoElAnio[m][e.c] && todoElAnio[m][e.c][e.id] !== undefined) {
+                        pagado = todoElAnio[m][e.c][e.id];
+                    } else if (todoElAnio[m][e.id] !== undefined) {
+                        pagado = todoElAnio[m][e.id];
+                    }
+                }
+            } catch (err) {
+                console.error("Error al comprobar estado de factura para:", e.n, err);
+            }
 
             return generarFilaLiq(e, htFinal.toFixed(1), totalCalc, pagado, valorHora, false, todoElAnio, m);
         }).join('');
