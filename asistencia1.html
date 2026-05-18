@@ -159,6 +159,12 @@
                     <div class="table-wrapper">
                         <table style="width:1400px">
                             <thead>
+                                <tr><th>Nombre</th><th>Email</th><th>CUIT</th><th>Hs/D</th><th>$xH</th><th>CBU/Alias</th><th>Centro</th><th>Ingreso</th><th>Esquema</th><th>Doc</th><th>X</th></tr>
+                            </thead>
+		    <div class="card">
+                    <div class="table-wrapper">
+                        <table style="width:1400px">
+                            <thead>
                                 <thead><tr><th>Nombre</th><th>Profesión</th><th>Entrada</th><th>Salida</th><th>CUIT</th><th>Hs/D</th><th>$xH</th><th>CBU/Alias</th><th>Centro</th><th>Ingreso</th><th>Egreso</th><th>Esquema</th><th>Doc</th><th>X</th></tr></thead>
                             </thead>
                             <tbody id="b-legajos"></tbody>
@@ -339,6 +345,9 @@ function upd(index, campo, valor) {
         alert("No se pudo guardar el cambio. Revisá la conexión.");
     });
 }
+function delE(i) { if(confirm("Borrar?")) { empleados.splice(i,1); dbEmpleados.set(empleados); } }
+function vaciar() { if(confirm("VACIAR?")) dbEmpleados.set([]); }
+
 function importar() { 
     const txt = document.getElementById('txt-masivo').value.trim();
     if(!txt) return alert("Pegá los datos de Excel.");
@@ -521,11 +530,13 @@ function saveA(id, d, v, c, m, a) {
     function limpiarDia() { const d = prompt("Día a limpiar:"); if(!d) return; const c = document.getElementById('c-sel').value, m = mS.value, a = aS.value; if(confirm("¿Borrar día?")) { empleados.filter(e => e.c === c).forEach(e => dbAsistencia.child(`${a}/${m}/${c}/${e.id}/${d}`).remove()); renderAsist(); }}
 
     // --- LIQUIDACIÓN INTELIGENTE ---
- function renderLiqBtns() {
+function renderLiqBtns() {
     const centros = ["TODOS", "CET_MANANA", "CET_TARDE", "CET_VESP", "CD", "REHAB"];
     document.getElementById('btns-liq').innerHTML = centros.map(c => 
         `<button class="btn btn-primary" onclick="centroLiqActivo='${c}';renderLiq()">${c.replace('_',' ')}</button>`
-    ).join('');
+    ).join('') + 
+    `<button class="btn" style="background:#27ae60; color:white; font-weight:bold; margin-left:10px;" onclick="exportarExcelLiquidacion()">📊 EXCEL CONSOLIDADO</button>`;
+    
     renderLiq();
 }
 async function renderLiq() {
@@ -993,6 +1004,89 @@ function calcularDiferenciaMinutos(teorica, real) {
     
     return totalReal - totalTeorico; 
     // Si da positivo, es llegada tarde. Si da negativo, llegó temprano.
+}
+function exportarExcelLiquidacion() {
+    const m = parseInt(mS.value), a = aS.value;
+    const centros = ["CET_MANANA", "CET_TARDE", "CET_VESP", "CD", "REHAB"];
+    
+    dbAsistencia.child(`${a}/${m}`).once('value', snap => {
+        const dataMensual = snap.val() || {};
+        
+        // Objeto para consolidar por CUIT (para unir turnos del mismo profesional)
+        let consolidado = {};
+
+        empleados.forEach(e => {
+            const idUnico = e.cuit || e.n; // Usamos CUIT para agrupar, si no tiene, el nombre
+            if (!consolidado[idUnico]) {
+                consolidado[idUnico] = {
+                    nombre: e.n,
+                    cuit: e.cuit || '-',
+                    cbu: e.cbu || '-',
+                    totalNeto: 0,
+                    montoTotal: 0,
+                    detalleCentros: []
+                };
+            }
+
+            // Calcular horas en el centro actual de este empleado
+            const asist = (dataMensual[e.c] && dataMensual[e.c][e.id]) || {};
+            const horasDiarias = parseFloat(e.h || 0);
+            const esquema = (e.esquema || "LMXJV").trim();
+            const topeHoras = (esquema.length * 4 * horasDiarias);
+
+            let hSuman = 0;
+            let hRestan = 0;
+            let tieneMarcas = false;
+
+            for (let d = 1; d <= 31; d++) {
+                let val = asist[d];
+                if (val) {
+                    tieneMarcas = true;
+                    if (val === 'P' || val === 'F' || val === 'AC') hSuman += horasDiarias;
+                    else if (val === 'A') hRestan += horasDiarias;
+                    else if (!isNaN(val)) {
+                        hRestan += parseFloat(val);
+                        hSuman += Math.max(0, horasDiarias - parseFloat(val));
+                    }
+                }
+            }
+
+            let extras = parseFloat(asist['EXT'] || 0);
+            let htFinal = 0;
+            if (tieneMarcas || extras > 0) {
+                let vol = hSuman + hRestan;
+                htFinal = Math.max(0, Math.min(vol, topeHoras) - hRestan) + extras;
+            }
+
+            if (htFinal > 0) {
+                const subtotal = Math.round(htFinal * e.vh);
+                consolidado[idUnico].totalNeto += htFinal;
+                consolidado[idUnico].montoTotal += subtotal;
+                consolidado[idUnico].detalleCentros.push(`${e.c}: ${htFinal.toFixed(1)}hs ($${subtotal})`);
+            }
+        });
+
+        // Generar CSV
+        let csvContent = "\uFEFF"; // BOM para acentos en Excel
+        csvContent += "Profesional;CUIT;CBU/Alias;Horas Totales;Monto Total;Composicion por Centros\n";
+
+        Object.values(consolidado).forEach(item => {
+            if (item.montoTotal > 0) {
+                csvContent += `${item.nombre};${item.cuit};${item.cbu};${item.totalNeto.toFixed(1)};${item.montoTotal};"${item.detalleCentros.join(" | ")}"\n`;
+            }
+        });
+
+        // Descarga del archivo
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `Liquidacion_${meses[m]}_${a}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
 }
 </script>
 </body>
