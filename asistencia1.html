@@ -103,6 +103,18 @@
     .AC { background: var(--azul) !important; color: white; }
     .F { background: #9b59b6 !important; color: white; }
     .bloqueado { background: #e9ecef !important; color: #999; pointer-events: none; }
+
+	/* --- NUEVO MÓDULO EMPLEADOS --- */
+.empleado-sede-card { background: white; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); overflow: hidden; }
+.sede-header { background: var(--cobalto); color: white; padding: 12px 20px; font-weight: 800; display: flex; justify-content: space-between; cursor: pointer; }
+.empleado-lista { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
+.empleado-chip { background: #f0f4ff; border: 2px solid #d0d8ff; border-radius: 25px; padding: 8px 18px; font-weight: 700; cursor: pointer; color: var(--cobalto); }
+#modal-legajo { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 5000; justify-content: center; align-items: center; }
+.legajo-window { background: #f8f9fa; width: 95%; max-width: 900px; max-height: 90vh; overflow-y: auto; border-radius: 20px; padding: 25px; position: relative; }
+.legajo-header { display: flex; justify-content: space-between; border-bottom: 2px solid var(--cobalto); margin-bottom: 15px; }
+.legajo-section-title { font-weight: 800; color: var(--cobalto); margin-top: 20px; border-bottom: 1px solid #ccc; }
+.kpi-strip { display: flex; gap: 10px; margin-top: 10px; }
+.kpi-box { background: white; padding: 10px; text-align: center; border-radius: 8px; flex: 1; border: 1px solid #eee; }
 </style>
 </head>
 <body>
@@ -121,6 +133,7 @@
         <div class="nav-item active" onclick="modulo('asistencia', this)">📅 ASISTENCIA</div>
         <div class="nav-item admin-only" onclick="modulo('legajos', this)">👤 LEGAJOS</div>
         <div class="nav-item admin-only" onclick="modulo('liquidacion', this)">💰 LIQUIDACIÓN</div>
+		<div class="nav-item admin-only" onclick="modulo('empleadosseccion', this); renderEmpleados();">👤 EMPLEADOS</div>
         <div class="nav-item admin-only" onclick="modulo('reportes', this)">📊 INFORMES</div>
         <div class="nav-item" onclick="modulo('chat', this)">💬 CHAT</div>
         <div style="flex-grow:1;"></div>
@@ -236,7 +249,25 @@
     </div>
 </div>
 <div id="visor-modal" onclick="this.style.display='none'"><div class="modal-content"><iframe id="visor-frame" style="width:100%; height:100%; border:none;"></iframe></div></div>
+<div id="empleadosseccion" class="modulo-div" style="display:none">
+    <div class="card" style="margin-bottom:15px;">
+        <select id="filtro-sede-emp" onchange="renderEmpleados()">
+            <option value="TODAS">TODAS LAS SEDES</option>
+            <option value="CETMANANA">CET MAÑANA</option>
+            <option value="CETTARDE">CET TARDE</option>
+            <option value="CETVESP">CET VESPERTINO</option>
+            <option value="CD">CENTRO DE DÍA</option>
+            <option value="REHAB">REHABILITACIÓN</option>
+        </select>
+        <input type="text" id="buscar-emp" placeholder="🔍 Buscar profesional..." oninput="renderEmpleados()">
+        <span id="emp-count">0</span>
+    </div>
+    <div id="empleados-container"></div>
+</div>
 
+<div id="modal-legajo">
+    <div class="legajo-window" id="legajo-content"></div>
+</div>
 <script>
     const PIN_SECRETARIA = "1234", PIN_ADMIN = "1986";
     let usuarioActivo = "";
