@@ -1000,25 +1000,37 @@ function congelarMesActual() {
     const m = mS.value, a = aS.value, c = centroLiqActivo;
     if(c === "TODOS") return alert("Seleccioná una sede");
     
-    if(confirm("¿Congelar este mes? Esto guardará los datos en la base de empleados.")) {
+    if(confirm("¿Congelar este mes?")) {
         const fotos = {};
-        document.querySelectorAll('#b-liq tr').forEach(fila => {
-            const nombre = fila.cells[0].innerText.split(' ')[0];
+        const filas = document.querySelectorAll('#b-liq tr');
+        
+        filas.forEach(fila => {
+            // Buscamos el empleado por el texto en la primera celda
+            const nombre = fila.cells[0].innerText.split('\n')[0].trim();
             const emp = empleados.find(x => x.n === nombre);
+            
             if(emp) {
+                // Seleccionamos las celdas por su posición actual en la tabla
+                // Asegúrate de que [2] sea realmente la de Horas y [4] la de Total
+                const hsText = fila.cells[2].innerText.replace(' hs', '').trim();
+                const totalText = fila.cells[4].innerText.replace(/[^0-9]/g, '');
+                const vhText = fila.cells[3].innerText.replace(/[^0-9]/g, '');
+                
                 fotos[emp.id] = {
-                    hs: fila.cells[2].querySelector('b').innerText.split(' ')[0],
-                    total: parseInt(fila.cells[4].innerText.replace(/[^0-9]/g, '')),
-                    vh: parseInt(fila.cells[3].innerText.replace(/[^0-9]/g, ''))
+                    hs: hsText,
+                    total: parseInt(totalText),
+                    vh: parseInt(vhText)
                 };
             }
         });
 
-        // AQUÍ AJUSTAMOS LA RUTA:
-        // Entramos primero a 'SISTEMA_PERSONAL', luego a la carpeta de liquidaciones
-        baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas/${c}/${a}/${m}`).set(fotos).then(() => {
-            alert("Mes bloqueado en SISTEMA_PERSONAL.");
+        // Guardar sin repetir la carpeta SISTEMA_PERSONAL
+        baseDb.child(`liquidacionescongeladas/${c}/${a}/${m}`).set(fotos).then(() => {
+            alert("Mes bloqueado exitosamente.");
             renderLiq();
+        }).catch(err => {
+            console.error(err);
+            alert("Error al guardar en Firebase.");
         });
     }
 }
