@@ -1000,14 +1000,24 @@ function congelarMesActual() {
     const m = mS.value, a = aS.value, c = centroLiqActivo;
     if(c === "TODOS") return alert("Seleccioná una sede");
     
-    if(confirm("¿Congelar este mes?")) {
+    if(confirm("¿Congelar este mes? Esto guardará los datos en la base de empleados.")) {
         const fotos = {};
-        // ... (tu lógica para llenar 'fotos')
+        document.querySelectorAll('#b-liq tr').forEach(fila => {
+            const nombre = fila.cells[0].innerText.split(' ')[0];
+            const emp = empleados.find(x => x.n === nombre);
+            if(emp) {
+                fotos[emp.id] = {
+                    hs: fila.cells[2].querySelector('b').innerText.split(' ')[0],
+                    total: parseInt(fila.cells[4].innerText.replace(/[^0-9]/g, '')),
+                    vh: parseInt(fila.cells[3].innerText.replace(/[^0-9]/g, ''))
+                };
+            }
+        });
 
-        // Asegúrate de escribir en la ruta que luego leerás en abrirLegajo
-        baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas/${c}/${a}/${m}`).set(fotos)
-        .then(() => {
-            alert("Mes bloqueado satisfactoriamente.");
+        // AQUÍ AJUSTAMOS LA RUTA:
+        // Entramos primero a 'SISTEMA_PERSONAL', luego a la carpeta de liquidaciones
+        baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas/${c}/${a}/${m}`).set(fotos).then(() => {
+            alert("Mes bloqueado en SISTEMA_PERSONAL.");
             renderLiq();
         });
     }
