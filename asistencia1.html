@@ -1101,6 +1101,246 @@ function exportarExcelLiquidacion() {
         document.body.removeChild(link);
     });
 }
+	// ============================================================
+// =============== MÓDULO EMPLEADOS (TITANIUM) ================
+// ============================================================
+
+const sedesMap = {
+    "CETMANANA": "CET Mañana",
+    "CETTARDE": "CET Tarde",
+    "CETVESP": "CET Vespertino",
+    "CD": "Centro de Día",
+    "REHAB": "Rehabilitación"
+};
+
+function renderEmpleados() {
+    const filtroSede = document.getElementById('filtro-sede-emp').value;
+    const busqueda = document.getElementById('buscar-emp').value.toLowerCase().trim();
+    
+    const porSede = {};
+    const vistos = new Set();
+    
+    empleados.forEach(e => {
+        const key = e.c || 'SINSEDE';
+        if (!porSede[key]) porSede[key] = [];
+        if (busqueda && !e.n.toLowerCase().includes(busqueda)) return;
+        if (filtroSede !== 'TODAS' && key !== filtroSede) return;
+        
+        porSede[key].push(e);
+        vistos.add(e.id || e.n);
+    });
+
+    document.getElementById('emp-count').innerText = vistos.size;
+    const container = document.getElementById('empleados-container');
+    
+    if (Object.keys(porSede).length === 0) {
+        container.innerHTML = `<div style="padding:40px; text-align:center; color:#999;">No se encontraron profesionales.</div>`;
+        return;
+    }
+    
+    let html = '';
+    const ordenSedes = ['CETMANANA', 'CETTARDE', 'CETVESP', 'CD', 'REHAB', 'SINSEDE'];
+    const sedesOrdenadas = Object.keys(porSede).sort((a, b) => {
+        return (ordenSedes.indexOf(a) !== -1 ? ordenSedes.indexOf(a) : 99) - 
+               (ordenSedes.indexOf(b) !== -1 ? ordenSedes.indexOf(b) : 99);
+    });
+    
+    sedesOrdenadas.forEach(sede => {
+        const personal = porSede[sede].sort((a,b) => a.n.localeCompare(b.n));
+        const nombreSede = sedesMap[sede] || sede;
+        
+        html += `<div class="empleado-sede-card">
+            <div class="sede-header">
+                <span>🏢 ${nombreSede}</span>
+                <span>👥 ${personal.length} profesionales</span>
+            </div>
+            <div class="empleado-lista">`;
+        
+        personal.forEach(e => {
+            html += `<span class="empleado-chip" onclick="abrirLegajo('${e.id || e.n}')">${e.n}</span>`;
+        });
+        
+        html += `</div></div>`;
+    });
+    
+    container.innerHTML = html;
+}
+
+// ============================================================
+// ============ MODAL LEGAJO INDIVIDUAL =======================
+// ============================================================
+let empActual = null;
+
+function abrirLegajo(idEmpleado) {
+    empActual = empleados.find(e => (e.id || e.n) === idEmpleado);
+    if (!empActual) return alert("Profesional no encontrado");
+    
+    const c = empActual.c;
+    const a = 2026;
+    const m = new Date().getMonth();
+    const mesActual = parseInt(mS.value) || m;
+    const anioActual = parseInt(aS.value) || a;
+    
+    Promise.all([
+        dbAsistencia.child(`${anioActual}/${mesActual}/${c}/${empActual.id}`).once('value'),
+        baseDb.child(`liquidacionescongeladas`).once('value'),
+        baseDb.child(`facturasestado/${anioActual}`).once('value')
+    ]).then(([snapAsist, snapLiq, snapFact]) => {
+        const dataAsist = snapAsist.val() || {};
+        const liquidaciones = snapLiq.val() || {};
+        const facturasEstado = snapFact.val() || {};
+        
+        let presente = 0, ausente = 0, feriado = 0;
+        let arrAsistencia = [];
+        
+        Object.keys(dataAsist).forEach(d => {
+            if (d === 'EXT') return;
+            const val = dataAsist[d];
+            const esObj = val !== null && typeof val === 'object';
+            
+            let estado = esObj ? (val.val || 'P') : (val ? val.toString().toUpperCase() : '');
+            let horaIn = esObj ? (val.in || '--') : '--';
+            let horaOut = esObj ? (val.out || '--') : '--';
+            let minsTarde = 0;
+            
+            if (esObj && horaIn !== '--' && empActual.hIngreso) {
+                minsTarde = calcularDiferenciaMinutos(empActual.hIngreso, horaIn);
+            }
+            
+            if (estado === 'P' || estado === '' || estado === 'T') presente++;
+            else if (estado === 'A') ausente++;
+            else if (estado === 'F') feriado++;
+            
+            arrAsistencia.push({ dia: parseInt(d), estado, horaIn, horaOut, minsTarde });
+        });
+        
+        const totalLaborables = presente + ausente;
+        const pctAusentismo = totalLaborables > 0 ? ((ausente / totalLaborables) * 100).toFixed(1) : '0.0';
+        
+        // Historial Sueldos
+        let historialSueldos = [];
+        for (let mesIdx = 0; mesIdx <= mesActual; mesIdx++) {
+            for (let sed in liquidaciones) {
+                const congelado = liquidaciones[sed]?.[anioActual]?.[mesIdx]?.[empActual.id];
+                if (congelado) {
+                    historialSueldos.push({
+                        periodo: `${meses[mesIdx]} ${anioActual}`,
+                        horas: congelado.hs,
+                        valorHora: congelado.vh,
+                        total: congelado.total,
+                        estado: (facturasEstado?.[mesIdx]?.[empActual.c]?.[empActual.id]) ? '🟢 Pagado' : '🔴 Pendiente'
+                    });
+                }
+            }
+        }
+        
+        // Facturas Adeudadas
+        let facturasAdeudadas = [];
+        for (let i = 0; i < mesActual; i++) {
+            const pagado = facturasEstado?.[i]?.[empActual.c]?.[empActual.id];
+            if (!pagado) {
+                const liqPasada = Object.values(liquidaciones).find(s => s?.[anioActual]?.[i]?.[empActual.id]);
+                const montoEst = liqPasada ? liqPasada[anioActual][i][empActual.id].total : '---';
+                facturasAdeudadas.push({ periodo: `${meses[i]} ${anioActual}`, monto: montoEst });
+            }
+        }
+        
+        let tardanzasList = arrAsistencia.filter(a => a.minsTarde > 15);
+        const sueldoBase = (parseFloat(empActual.h) || 0) * 4 * 4.33 * (parseFloat(empActual.vh) || 0);
+        
+        document.getElementById('modal-legajo').style.display = 'flex';
+        
+        document.getElementById('legajo-content').innerHTML = `
+        <div class="legajo-header">
+            <div><h2>${empActual.n}</h2><span>${empActual.profesion || ''} · ${sedesMap[empActual.c] || empActual.c}</span></div>
+            <button class="close-btn" onclick="cerrarLegajo()">✕</button>
+        </div>
+        
+        <div class="legajo-section-title">📋 DATOS LEGAJO</div>
+        <div class="legajo-grid">
+            <div class="legajo-field"><label>CUIT</label><div class="value">${empActual.cuit || '---'}</div></div>
+            <div class="legajo-field"><label>Sueldo Base Estimado</label><div class="value">$${Math.round(sueldoBase).toLocaleString()}</div></div>
+            <div class="legajo-field"><label>Horario</label><div class="value">${empActual.hIngreso || '08:00'} a ${empActual.hEgreso || '--'}</div></div>
+        </div>
+
+        <div class="kpi-strip">
+            <div class="kpi-box"><div class="kpi-num" style="color:var(--verde);">${presente}</div><div class="kpi-label">Pres</div></div>
+            <div class="kpi-box"><div class="kpi-num" style="color:var(--rojo);">${ausente}</div><div class="kpi-label">Aus</div></div>
+            <div class="kpi-box"><div class="kpi-num" style="color:var(--rojo);">${pctAusentismo}%</div><div class="kpi-label">% Ausent</div></div>
+            <div class="kpi-box"><div class="kpi-num" style="color:var(--oro);">${tardanzasList.length}</div><div class="kpi-label">⚠️ Tarde</div></div>
+        </div>
+
+        <div class="legajo-section-title">📝 OBSERVACIONES</div>
+        <div style="display:flex; gap:10px;">
+            <textarea id="obs-legajo" style="flex:1; min-height:80px; padding:10px;">${empActual.observaciones || ''}</textarea>
+            <button onclick="guardarObservacion()" style="background:var(--cobalto); color:white; border:none; padding:10px; cursor:pointer;">💾 GUARDAR</button>
+        </div>
+
+        <div class="legajo-section-title">💵 PAGO PARCIAL / ANTICIPO</div>
+        <div style="background:#fff; padding:10px; border-radius:10px;">
+            <input type="number" id="pago-parcial-monto" placeholder="Monto">
+            <input type="date" id="pago-parcial-fecha">
+            <button onclick="registrarAnticipo()">REGISTRAR</button>
+            <div id="historial-anticipos"></div>
+        </div>
+
+        <div class="legajo-section-title">⭐ EVALUACIÓN</div>
+        <div style="display:flex; gap:10px;">
+            <select id="eval-puntaje">${[1,2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${empActual.evaluacion?.puntaje == n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+            <input type="text" id="eval-comentario" value="${empActual.evaluacion?.comentario || ''}" style="flex:1;">
+            <button onclick="guardarEvaluacion()">GUARDAR</button>
+        </div>
+        `;
+        renderHistorialAnticipos();
+    });
+}
+
+function calcularDiferenciaMinutos(hEsperada, hReal) {
+    if (!hEsperada || !hReal) return 0;
+    const [hE, mE] = hEsperada.split(':').map(Number);
+    const [hR, mR] = hReal.split(':').map(Number);
+    return Math.max(0, (hR * 60 + mR) - (hE * 60 + mE));
+}
+
+function cerrarLegajo() { document.getElementById('modal-legajo').style.display = 'none'; }
+
+function guardarObservacion() {
+    const obs = document.getElementById('obs-legajo').value;
+    const idx = empleados.indexOf(empActual);
+    dbEmpleados.child(idx).update({ observaciones: obs });
+    alert('✅ Guardado');
+}
+
+function registrarAnticipo() {
+    const monto = document.getElementById('pago-parcial-monto').value;
+    const fecha = document.getElementById('pago-parcial-fecha').value;
+    const anticipos = empActual.anticipos || [];
+    anticipos.push({ monto: parseFloat(monto), fecha });
+    dbEmpleados.child(empleados.indexOf(empActual)).update({ anticipos });
+    renderHistorialAnticipos();
+}
+
+function renderHistorialAnticipos() {
+    const container = document.getElementById('historial-anticipos');
+    const anticipos = empActual.anticipos || [];
+    const totalDado = anticipos.reduce((sum, a) => sum + parseFloat(a.monto), 0);
+    const sueldoBase = (parseFloat(empActual.h) || 0) * 4 * 4.33 * (parseFloat(empActual.vh) || 0);
+    const faltante = Math.max(0, sueldoBase - totalDado);
+    
+    container.innerHTML = `
+        <p>💰 Anticipado: $${totalDado.toLocaleString()} | 📌 Faltante: $${faltante.toLocaleString()}</p>
+        ${anticipos.map(a => `<p>${a.fecha}: $${a.monto}</p>`).join('')}
+    `;
+}
+
+function guardarEvaluacion() {
+    const puntaje = document.getElementById('eval-puntaje').value;
+    const comentario = document.getElementById('eval-comentario').value;
+    dbEmpleados.child(empleados.indexOf(empActual)).update({ 
+        evaluacion: { puntaje, comentario, fecha: new Date().toLocaleDateString() } 
+    });
+    alert('✅ Evaluación guardada');
+}
 </script>
 </body>
 </html>
