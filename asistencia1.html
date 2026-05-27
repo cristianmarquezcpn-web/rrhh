@@ -1000,20 +1000,13 @@ function congelarMesActual() {
     const m = mS.value, a = aS.value, c = centroLiqActivo;
     if(c === "TODOS") return alert("Seleccioná una sede");
     
-    if(confirm("¿Congelar este mes? Esto guardará el Valor Hora y las Horas actuales como definitivas.")) {
+    if(confirm("¿Congelar este mes?")) {
         const fotos = {};
-        document.querySelectorAll('#b-liq tr').forEach(fila => {
-            const nombre = fila.cells[0].innerText.split(' ')[0];
-            const emp = empleados.find(x => x.n === nombre);
-            if(emp) {
-                fotos[emp.id] = {
-                    hs: fila.cells[2].querySelector('b').innerText.split(' ')[0],
-                    total: parseInt(fila.cells[4].innerText.replace(/[^0-9]/g, '')),
-                    vh: parseInt(fila.cells[3].innerText.replace(/[^0-9]/g, ''))
-                };
-            }
-        });
-        baseDb.child(`liquidaciones_congeladas/${a}/${m}/${c}`).set(fotos).then(() => {
+        // ... (tu lógica para llenar 'fotos')
+
+        // Asegúrate de escribir en la ruta que luego leerás en abrirLegajo
+        baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas/${c}/${a}/${m}`).set(fotos)
+        .then(() => {
             alert("Mes bloqueado satisfactoriamente.");
             renderLiq();
         });
@@ -1213,9 +1206,12 @@ function abrirLegajo(idEmpleado) {
     const anioActual = parseInt(aS.value) || a;
     
     Promise.all([
-        dbAsistencia.child(`${anioActual}/${mesActual}/${c}/${empActual.id}`).once('value'),
-        baseDb.child(`liquidacionescongeladas`).once('value'),
-        baseDb.child(`facturasestado/${anioActual}`).once('value')
+    dbAsistencia.child(`${anioActual}/${mesActual}/${c}/${empActual.id}`).once('value'),
+    // Usamos la ruta con guion bajo:
+    baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas`).once('value'),
+    // Corregido a facturas_estado:
+    baseDb.child(`facturas_estado/${anioActual}`).once('value') 
+
     ]).then(([snapAsist, snapLiq, snapFact]) => {
         const dataAsist = snapAsist.val() || {};
         const liquidaciones = snapLiq.val() || {};
@@ -1288,13 +1284,15 @@ function abrirLegajo(idEmpleado) {
         </div>
         
         <div class="legajo-section-title">📋 DATOS LEGAJO</div>
-        <div class="legajo-grid">
-            <div class="legajo-field"><label>CUIT</label><div class="value">${empActual.cuit || '---'}</div></div>
-            <div class="legajo-field"><label>Sueldo Base Estimado</label><div class="value">$${Math.round(sueldoBase).toLocaleString()}</div></div>
-            <div class="legajo-field"><label>Horario</label><div class="value">${empActual.hIngreso || '08:00'} a ${empActual.hEgreso || '--'}</div></div>
-        </div>
-
-        <div class="kpi-strip">
+        <div class="legajo-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+        <div class="legajo-field"><label>CUIT</label><div class="value">${empActual.cuit || '---'}</div></div>
+        <div class="legajo-field"><label>CBU / Alias</label><div class="value">${empActual.cbu || '---'}</div></div>
+        <div class="legajo-field"><label>Sueldo Base Estimado</label><div class="value">$${Math.round(sueldoBase).toLocaleString()}</div></div>
+        <div class="legajo-field"><label>Horario</label><div class="value">${empActual.hIngreso || '08:00'} a ${empActual.hEgreso || '--'}</div></div>
+        <div class="legajo-field"><label>Esquema</label><div class="value">${empActual.esquema || '---'}</div></div>
+        <div class="legajo-field"><label>Fecha Ingreso</label><div class="value">${empActual.fIngreso || '---'}</div></div>
+    </div>
+		 <div class="kpi-strip">
             <div class="kpi-box"><div class="kpi-num" style="color:var(--verde);">${presente}</div><div class="kpi-label">Pres</div></div>
             <div class="kpi-box"><div class="kpi-num" style="color:var(--rojo);">${ausente}</div><div class="kpi-label">Aus</div></div>
             <div class="kpi-box"><div class="kpi-num" style="color:var(--rojo);">${pctAusentismo}%</div><div class="kpi-label">% Ausent</div></div>
