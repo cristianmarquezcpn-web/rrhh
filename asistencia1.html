@@ -1553,6 +1553,29 @@ function guardarEvaluacion() {
     });
     alert('✅ Evaluación guardada');
 }
+function guardarTodoLegajo() {
+    const idx = empleados.indexOf(empActual);
+    if (idx === -1) return alert("Error: Empleado no encontrado");
+
+    // Recopilamos solo lo que quieres guardar
+    const datosGuardar = {
+        anticipos: empActual.anticipos || [], // Ya se actualizan al registrarlos
+        observaciones: document.getElementById('leg-obs').value,
+        evaluacion: {
+            puntaje: document.getElementById('leg-puntaje').value,
+            comentario: document.getElementById('leg-eval-comentario').value,
+            fecha: new Date().toLocaleDateString()
+        }
+    };
+
+    // Actualizamos solo esa parte en la base de datos
+    dbEmpleados.child(idx).update(datosGuardar).then(() => {
+        alert('✅ Datos guardados correctamente');
+        cerrarLegajo();
+    }).catch(error => {
+        alert("Error al guardar: " + error.message);
+    });
+}	
 </script>
 </body>
 </html>
