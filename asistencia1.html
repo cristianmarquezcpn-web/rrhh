@@ -1314,7 +1314,7 @@ async function abrirLegajo(idEmpleado) {
     const mesActual = parseInt(mS.value) || new Date().getMonth();
     const anioActual = parseInt(aS.value) || 2026;
 
-    // 1. OBTENCIÓN DE DATOS (Liquidaciones + Asistencia en paralelo)
+    // 1. OBTENCIÓN DE DATOS
     const [snapLiq, snapAsist] = await Promise.all([
         baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas`).once('value'),
         dbAsistencia.child(`${anioActual}/${mesActual}/${c}/${empActual.id}`).once('value')
@@ -1323,7 +1323,24 @@ async function abrirLegajo(idEmpleado) {
     const liquidaciones = snapLiq.val() || {};
     const dataAsist = snapAsist.val() || {};
 
-    // 2. CÁLCULO SALIDA
+    // 2. CÁLCULO DE MÉTRICAS (P, A, AC y Tardanzas)
+    let p = 0, a = 0, ac = 0, totalTardanzas = 0;
+    Object.values(dataAsist).forEach(reg => {
+        if (reg && typeof reg === 'object') {
+            if (reg.status === 'P') p++;
+            if (reg.status === 'A') a++;
+            if (reg.status === 'AC') ac++;
+            
+            if (reg.in && empActual.hIngreso) {
+                const minutosTarde = calcularDiferenciaMinutos(empActual.hIngreso, reg.in);
+                if (minutosTarde > 15) totalTardanzas++;
+            }
+        }
+    });
+    const totalDias = p + a + ac;
+    const pctAusentismo = totalDias > 0 ? ((a / totalDias) * 100).toFixed(1) : 0;
+
+    // 3. CÁLCULO SALIDA
     let hSalida = "--:--";
     if(empActual.hIngreso && empActual.h) {
         let [hh, mm] = empActual.hIngreso.split(':').map(Number);
@@ -1332,16 +1349,6 @@ async function abrirLegajo(idEmpleado) {
         let mmS = mm.toString().padStart(2, '0');
         hSalida = `${hhS}:${mmS}`;
     }
-
-    // 3. CÁLCULO TARDANZAS
-    let totalTardanzas = 0;
-    Object.keys(dataAsist).forEach(dia => {
-        const reg = dataAsist[dia];
-        if (reg && typeof reg === 'object' && reg.in && empActual.hIngreso) {
-            const minutosTarde = calcularDiferenciaMinutos(empActual.hIngreso, reg.in);
-            if (minutosTarde > 15) totalTardanzas++;
-        }
-    });
 
     // 4. RENDERIZADO DEL MODAL
     document.getElementById('modal-legajo').style.display = 'flex';
@@ -1376,8 +1383,8 @@ async function abrirLegajo(idEmpleado) {
             </div>
 
             <div style="grid-column: span 2; background:#fff3f3; padding:10px; border:1px solid #ffcaca; border-radius:5px;">
-                <label>TARDANZAS EN EL MES ( > 15 min):</label>
-                <div style="font-size:20px; font-weight:bold; color:#d00;">${totalTardanzas}</div>
+                <label>ESTADÍSTICAS MES (P: <span style="color:green; font-weight:bold;">${p}</span> | A: <span style="color:red; font-weight:bold;">${a}</span> | AC: <span style="color:blue; font-weight:bold;">${ac}</span>)</label>
+                <div style="font-size:16px;">% Ausentismo: <b>${pctAusentismo}%</b> | Tardanzas (>15min): <b>${totalTardanzas}</b></div>
             </div>
 
             <div style="grid-column: span 2;">
@@ -1386,7 +1393,9 @@ async function abrirLegajo(idEmpleado) {
                     ${Object.keys(liquidaciones[empActual.c] || {}).map(anio => 
                         Object.keys(liquidaciones[empActual.c][anio] || {}).map(mes => {
                             const datos = liquidaciones[empActual.c][anio][mes][empActual.id];
-                            return datos ? `<div>${meses[mes]} ${anio}: $${parseFloat(datos.total || 0).toLocaleString()}</div>` : '';
+                            if (!datos) return '';
+                            const esPendiente = datos.estado === 'pendiente' ? '<b style="color:orange;">(PENDIENTE)</b>' : '';
+                            return `<div>${meses[mes]} ${anio}: $${parseFloat(datos.total || 0).toLocaleString()} ${esPendiente}</div>`;
                         }).join('')
                     ).join('')}
                 </div>
