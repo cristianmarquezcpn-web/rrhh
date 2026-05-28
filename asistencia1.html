@@ -1498,7 +1498,7 @@ let sueldoEstimado = Math.round(horasFinales * valorHora);
     </div>`;
     
     if(empActual.evaluacion?.puntaje) document.getElementById('leg-puntaje').value = empActual.evaluacion.puntaje;
-    renderHistorialAnticipos();
+    renderHistorialAnticipos(sueldoEstimado);
 }
 function calcularDiferenciaMinutos(hEsperada, hReal) {
     if (!hEsperada || !hReal) return 0;
@@ -1530,15 +1530,13 @@ function registrarAnticipo() {
     // Refrescamos la visual del historial
     renderHistorialAnticipos();
 }
-window.sueldoCalculadoParaHistorial = sueldoEstimado; 
-
-function renderHistorialAnticipos() {
+ function renderHistorialAnticipos(sueldoCalculado) {
     const container = document.getElementById('historial-anticipos');
     const anticipos = empActual.anticipos || [];
     const totalDado = anticipos.reduce((sum, a) => sum + parseFloat(a.monto), 0);
     
-    // Ahora leemos el sueldo calculado correctamente
-    const sueldoNeto = window.sueldoCalculadoParaHistorial || 0;
+    // Usamos el sueldo que nos llegó por parámetro, si no llegó, tomamos 0
+    const sueldoNeto = sueldoCalculado || 0;
     const faltante = Math.max(0, sueldoNeto - totalDado);
     
     container.innerHTML = `
