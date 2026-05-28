@@ -103,60 +103,79 @@
     .AC { background: var(--azul) !important; color: white; }
     .F { background: #9b59b6 !important; color: white; }
     .bloqueado { background: #e9ecef !important; color: #999; pointer-events: none; }
-
+/* Card & Chip Styles */
 .empleado-sede-card { background: white; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); overflow: hidden; }
 .sede-header { background: var(--cobalto); color: white; padding: 12px 20px; font-weight: 800; display: flex; justify-content: space-between; cursor: pointer; }
 .empleado-lista { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
-.empleado-chip { background: #f0f4ff; border: 2px solid #d0d8ff; border-radius: 25px; padding: 8px 18px; font-weight: 700; cursor: pointer; color: var(--cobalto); }
+.empleado-chip { background: #f0f4ff; border: 2px solid #d0d8ff; border-radius: 25px; padding: 8px 18px; font-weight: 700; cursor: pointer; color: var(--cobalto); transition: all 0.2s; }
+.empleado-chip:hover { background: #e0e8ff; border-color: #b0c0ff; transform: translateY(-2px); }
 
-
-#modal-legajo { 
-    display: none; 
-    position: fixed; 
-    top: 0; left: 0; width: 100%; height: 100%; 
-    background: rgba(0,0,0,0.65); 
-    z-index: 9999; 
-    justify-content: center; 
-    align-items: center; 
+/* Modal Styles */
+#modal-legajo {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.65);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
     padding: 20px;
 }
 
-.legajo-window { 
-    background: #ffffff; 
-    width: 100%; 
-    max-width: 700px; 
-    max-height: 90vh; 
-    border-radius: 16px; 
-    box-shadow: 0 20px 40px rgba(0,0,0,0.3); 
-    display: flex; 
-    flex-direction: column; 
+.legajo-window {
+    background: #ffffff;
+    width: 100%;
+    max-width: 700px;
+    max-height: 90vh;
+    border-radius: 16px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
 }
 
-.legajo-header { 
-    background: var(--cobalto); 
-    color: white; 
-    padding: 20px; 
-    display: flex; 
-    justify-content: space-between; 
+.legajo-header {
+    background: var(--cobalto);
+    color: white;
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
     align-items: center;
 }
 
-.legajo-body { 
-    padding: 20px; 
-    overflow-y: auto; 
+.legajo-body {
+    padding: 20px;
+    overflow-y: auto;
 }
 
-.legajo-grid { 
-    display: grid; 
-    grid-template-columns: 1fr 1fr; 
-    gap: 15px; 
+/* Custom Scrollbar for Legajo */
+.legajo-body::-webkit-scrollbar { width: 6px; }
+.legajo-body::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 4px; }
+
+.legajo-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
     margin-bottom: 15px;
 }
 
-.field { font-size: 14px; }
+/* Form Styling inside Legajo */
+.legajo-body label { display: block; color: #666; font-size: 11px; text-transform: uppercase; font-weight: bold; margin-bottom: 2px; }
+.legajo-body input, .legajo-body textarea, .legajo-body select {
+    width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box;
+}
+
+/* Field Helper Classes */
+.field { font-size: 14px; margin-bottom: 10px; }
 .field label { display: block; color: #666; font-size: 11px; text-transform: uppercase; font-weight: bold; }
-.field .val { font-size: 16px; font-weight: 600; color: #333; }	
+.field .val { font-size: 16px; font-weight: 600; color: #333; }
+
+/* Responsive Adjustments */
+@media (max-width: 600px) {
+    .legajo-grid { grid-template-columns: 1fr; }
+    .legajo-window { margin: 10px; }
+}
+
 </style>
 </head>
 <body>
@@ -306,9 +325,8 @@
     </div>
     <div id="empleados-container"></div>
 </div>
-
 <div id="modal-legajo">
-    <div class="legajo-window" id="legajo-content"></div>
+<div class="legajo-window" id="legajo-content"></div>
 </div>
 <script>
     const PIN_SECRETARIA = "1234", PIN_ADMIN = "1986";
@@ -1296,69 +1314,108 @@ async function abrirLegajo(idEmpleado) {
     const mesActual = parseInt(mS.value) || new Date().getMonth();
     const anioActual = parseInt(aS.value) || 2026;
 
-    const [snapAsist, snapLiq, snapFact] = await Promise.all([
-        dbAsistencia.child(`${anioActual}/${mesActual}/${c}/${empActual.id}`).once('value'),
+    // 1. OBTENCIÓN DE DATOS (Liquidaciones + Asistencia en paralelo)
+    const [snapLiq, snapAsist] = await Promise.all([
         baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas`).once('value'),
-        baseDb.child(`facturas_estado/${anioActual}`).once('value')
+        dbAsistencia.child(`${anioActual}/${mesActual}/${c}/${empActual.id}`).once('value')
     ]);
 
-    const dataAsist = snapAsist.val() || {};
     const liquidaciones = snapLiq.val() || {};
-    const facturasEstado = snapFact.val() || {};
+    const dataAsist = snapAsist.val() || {};
 
-    // Procesamiento
-    let presente = 0, ausente = 0;
-    Object.keys(dataAsist).forEach(d => {
-        if (d === 'EXT') return;
-        const val = dataAsist[d];
-        const estado = (val && typeof val === 'object') ? (val.val || 'P') : (val ? val.toString().toUpperCase() : '');
-        if (estado === 'P' || estado === 'T' || estado === '') presente++;
-        else if (estado === 'A') ausente++;
+    // 2. CÁLCULO SALIDA
+    let hSalida = "--:--";
+    if(empActual.hIngreso && empActual.h) {
+        let [hh, mm] = empActual.hIngreso.split(':').map(Number);
+        let total = hh + parseInt(empActual.h);
+        let hhS = (total < 24 ? total : total - 24).toString().padStart(2, '0');
+        let mmS = mm.toString().padStart(2, '0');
+        hSalida = `${hhS}:${mmS}`;
+    }
+
+    // 3. CÁLCULO TARDANZAS
+    let totalTardanzas = 0;
+    Object.keys(dataAsist).forEach(dia => {
+        const reg = dataAsist[dia];
+        if (reg && typeof reg === 'object' && reg.in && empActual.hIngreso) {
+            const minutosTarde = calcularDiferenciaMinutos(empActual.hIngreso, reg.in);
+            if (minutosTarde > 15) totalTardanzas++;
+        }
     });
 
-    // Cálculo Sueldo con 2 decimales
-    const vh = parseFloat(empActual.vh) || 0;
-    const horas = parseFloat(empActual.h) || 0;
-    const sueldoBase = (vh * horas * 17.32).toFixed(2);
-
-    // HTML Construcción
+    // 4. RENDERIZADO DEL MODAL
     document.getElementById('modal-legajo').style.display = 'flex';
     document.getElementById('modal-legajo').innerHTML = `
-    <div class="legajo-window">
-        <div class="legajo-header" style="background:var(--cobalto); color:white; padding:15px; display:flex; justify-content:space-between;">
-            <div><h2 style="margin:0;">${empActual.n}</h2><span>${empActual.profesion || ''}</span></div>
+    <div class="legajo-window" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+        <div class="legajo-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">${empActual.n}</h2>
             <button onclick="cerrarLegajo()" style="cursor:pointer;">✕</button>
         </div>
-        <div class="legajo-body" style="padding:20px; overflow-y:auto;">
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">
-                <div class="field"><label>MAIL</label><div class="val">${empActual.mail || '---'}</div></div>
-                <div class="field"><label>ESQUEMA</label><div class="val">${empActual.esquema || '---'}</div></div>
-                <div class="field"><label>VALOR HORA</label><div class="val">$${vh.toFixed(2)}</div></div>
-                <div class="field"><label>SUELDO BASE</label><div class="val">$${sueldoBase}</div></div>
+        
+        <div class="legajo-body" style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; padding:20px;">
+            <div style="grid-column: span 2; border-bottom:1px solid #ccc; padding-bottom:10px;">
+                <label>Nombre</label><input type="text" id="leg-n" value="${empActual.n || ''}" style="width:100%">
+            </div>
+            <div><label>Email</label><input type="text" id="leg-m" value="${empActual.m || ''}" style="width:100%"></div>
+            <div><label>Profesión</label><input type="text" id="leg-profesion" value="${empActual.profesion || ''}" style="width:100%"></div>
+            <div><label>CUIT</label><input type="text" id="leg-cuit" value="${empActual.cuit || ''}" style="width:100%"></div>
+            <div><label>CBU</label><input type="text" id="leg-cbu" value="${empActual.cbu || ''}" style="width:100%"></div>
+            <div><label>Centro</label><input type="text" id="leg-c" value="${empActual.c || ''}" style="width:100%"></div>
+            <div><label>Esquema</label><input type="text" id="leg-esquema" value="${empActual.esquema || 'LMXJV'}" style="width:100%"></div>
+            <div><label>F. Ingreso</label><input type="date" id="leg-fIngreso" value="${empActual.fIngreso || ''}" style="width:100%"></div>
+            <div><label>F. Egreso</label><input type="date" id="leg-fEgreso" value="${empActual.fEgreso || ''}" style="width:100%"></div>
+            
+            <div style="grid-column: span 2; background:#f4f4f4; padding:10px; border-radius:5px;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:10px;">
+                    <div><label>H. Ingreso</label><input type="time" id="leg-hIngreso" value="${empActual.hIngreso || '08:00'}" style="width:100%"></div>
+                    <div><label>H. Salida</label><div style="font-weight:bold; padding:5px;">${hSalida}</div></div>
+                    <div><label>Hs/Día</label><input type="number" id="leg-h" value="${empActual.h || 0}" style="width:100%"></div>
+                    <div><label>Valor Hora</label><input type="number" id="leg-vh" value="${empActual.vh || 0}" style="width:100%"></div>
+                    <div style="grid-column: span 4;"><label>Sueldo Base Manual ($)</label><input type="number" id="leg-sueldoBase" value="${empActual.sueldoBase || 0}" style="width:100%"></div>
+                </div>
             </div>
 
-            <h4 style="margin-top:20px;">💵 Historial Liquidaciones</h4>
-            <div id="historial-lista" style="max-height:150px; overflow-y:auto; border:1px solid #eee; padding:10px;">
-                ${Object.keys(liquidaciones[c]?.[anioActual] || {}).map(m => {
-                    const datos = liquidaciones[c][anioActual][m][empActual.id];
-                    return datos ? `<div style="display:flex; justify-content:space-between;">
-                        <span>${meses[m]}</span> <span>$${parseFloat(datos.total).toFixed(2)}</span>
-                    </div>` : '';
-                }).join('')}
+            <div style="grid-column: span 2; background:#fff3f3; padding:10px; border:1px solid #ffcaca; border-radius:5px;">
+                <label>TARDANZAS EN EL MES ( > 15 min):</label>
+                <div style="font-size:20px; font-weight:bold; color:#d00;">${totalTardanzas}</div>
             </div>
 
-            <h4 style="margin-top:20px;">⚠️ Facturas Pendientes</h4>
-            <div id="pendientes-lista" style="max-height:100px; overflow-y:auto;">
-                ${Object.keys(facturasEstado).filter(m => !facturasEstado[m]?.[c]?.[empActual.id]).map(m => `<div>${meses[m]} - PENDIENTE</div>`).join('')}
+            <div style="grid-column: span 2;">
+                <h4>💵 Historial Liquidaciones</h4>
+                <div style="max-height:100px; overflow-y:auto; border:1px solid #eee; padding:5px;">
+                    ${Object.keys(liquidaciones[empActual.c] || {}).map(anio => 
+                        Object.keys(liquidaciones[empActual.c][anio] || {}).map(mes => {
+                            const datos = liquidaciones[empActual.c][anio][mes][empActual.id];
+                            return datos ? `<div>${meses[mes]} ${anio}: $${parseFloat(datos.total || 0).toLocaleString()}</div>` : '';
+                        }).join('')
+                    ).join('')}
+                </div>
             </div>
 
-            <h4 style="margin-top:20px;">📝 Observaciones</h4>
-            <textarea id="obs-legajo" style="width:100%;">${empActual.observaciones || ''}</textarea>
-            <button onclick="guardarObservacion()" style="margin-top:10px;">GUARDAR</button>
+            <div style="grid-column: span 2;">
+                <h4>💰 Anticipos</h4>
+                <div id="historial-anticipos"></div>
+                <div style="display:flex; gap:5px; margin-top:5px;">
+                    <input type="number" id="anticipo-monto" placeholder="$">
+                    <input type="date" id="anticipo-fecha">
+                    <button onclick="registrarAnticipo()">+</button>
+                </div>
+            </div>
+
+            <div style="grid-column: span 2;">
+                <h4>📝 Evaluación y Obs</h4>
+                <select id="leg-puntaje"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
+                <textarea id="leg-eval-comentario" style="width:100%" placeholder="Comentario evaluación">${empActual.evaluacion?.comentario || ''}</textarea>
+                <textarea id="leg-obs" style="width:100%" placeholder="Observaciones">${empActual.observaciones || ''}</textarea>
+            </div>
+
+            <button onclick="guardarTodoLegajo()" style="grid-column: span 2; padding:15px; background:var(--cobalto); color:white; border:none; border-radius:5px;">GUARDAR TODO EL LEGAJO</button>
         </div>
     </div>`;
+    
+    if(empActual.evaluacion?.puntaje) document.getElementById('leg-puntaje').value = empActual.evaluacion.puntaje;
+    renderHistorialAnticipos();
 }
-
 function calcularDiferenciaMinutos(hEsperada, hReal) {
     if (!hEsperada || !hReal) return 0;
     const [hE, mE] = hEsperada.split(':').map(Number);
