@@ -103,39 +103,73 @@
     .AC { background: var(--azul) !important; color: white; }
     .F { background: #9b59b6 !important; color: white; }
     .bloqueado { background: #e9ecef !important; color: #999; pointer-events: none; }
-	/* --- LO QUE YA TENÍAS (Mantenlo) --- */
+	
 .empleado-sede-card { background: white; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); overflow: hidden; }
 .sede-header { background: var(--cobalto); color: white; padding: 12px 20px; font-weight: 800; display: flex; justify-content: space-between; cursor: pointer; }
 .empleado-lista { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
 .empleado-chip { background: #f0f4ff; border: 2px solid #d0d8ff; border-radius: 25px; padding: 8px 18px; font-weight: 700; cursor: pointer; color: var(--cobalto); }
 
-/* --- LO NUEVO PARA EL MODAL WOW (Reemplaza lo viejo por esto) --- */
-#modal-legajo { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 5000; justify-content: center; align-items: center; }
+#modal-legajo { 
+    display: none; 
+    position: fixed; 
+    top: 0; left: 0; width: 100%; height: 100%; 
+    background: rgba(0,0,0,0.65); 
+    z-index: 9999; 
+    justify-content: center; 
+    align-items: center; 
+    padding: 20px;
+}
 
-.legajo-card { background: #fff; width: 95%; max-width: 850px; height: 85vh; border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+/* El contenedor principal (La Tarjeta) */
+.legajo-window { 
+    background: #ffffff; 
+    width: 100%; 
+    max-width: 700px; 
+    max-height: 90vh; 
+    border-radius: 16px; 
+    box-shadow: 0 20px 40px rgba(0,0,0,0.3); 
+    display: flex; 
+    flex-direction: column; 
+    overflow: hidden;
+}
 
-.legajo-header { background: var(--cobalto); color: white; padding: 25px; display: flex; justify-content: space-between; align-items: center; }
+/* Cabecera */
+.legajo-header { 
+    background: var(--cobalto); 
+    color: white; 
+    padding: 20px; 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center;
+}
 
-/* Tabs */
-.tab-container { display: flex; background: #f8f9fa; border-bottom: 1px solid #ddd; padding: 0 20px; }
-.tab-btn { padding: 15px 20px; border: none; background: none; font-weight: 800; color: #7f8c8d; cursor: pointer; transition: 0.3s; }
-.tab-btn.active { color: var(--cobalto); border-bottom: 3px solid var(--cobalto); }
+/* Cuerpo del modal con scroll */
+.legajo-body { 
+    padding: 20px; 
+    overflow-y: auto; 
+}
 
-.tab-content { padding: 25px; overflow-y: auto; flex-grow: 1; }
+/* Diseño de secciones (Elimina el espacio blanco vacío) */
+.section-box { 
+    background: #f8f9fa; 
+    border: 1px solid #e9ecef; 
+    padding: 15px; 
+    border-radius: 10px; 
+    margin-bottom: 20px; 
+}
 
-/* Elementos visuales */
-.legajo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px; }
-.legajo-field { background: #f4f4f4; padding: 15px; border-radius: 10px; }
-.legajo-field label { display: block; font-size: 0.75rem; color: #666; text-transform: uppercase; margin-bottom: 5px; }
+.legajo-grid { 
+    display: grid; 
+    grid-template-columns: 1fr 1fr; 
+    gap: 15px; 
+    margin-bottom: 15px;
+}
 
-.kpi-strip { display: flex; gap: 10px; margin-bottom: 20px; }
-.kpi-box { flex: 1; padding: 15px; border-radius: 10px; background: #fff; text-align: center; border: 1px solid #eee; }
+/* Estilo para los campos de datos */
+.field { font-size: 14px; }
+.field label { display: block; color: #666; font-size: 11px; text-transform: uppercase; font-weight: bold; }
+.field .val { font-size: 16px; font-weight: 600; color: #333; }
 
-.card-historial { border: 1px solid #eee; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-
-.badge { padding: 5px 12px; border-radius: 15px; font-size: 0.8em; font-weight: bold; }
-.status-pagado { background: #d4edda; color: #155724; }
-.status-pendiente { background: #f8d7da; color: #721c24; }
 </style>
 </head>
 <body>
@@ -1321,43 +1355,48 @@ async function abrirLegajo(idEmpleado) {
 
     // --- RENDERIZADO FINAL ---
     document.getElementById('modal-legajo').style.display = 'flex';
-    document.getElementById('legajo-content').innerHTML = `
-    <div class="legajo-container">
-        <div class="legajo-header" style="display:flex; justify-content:space-between; align-items:center;">
-            <div><h2>${empActual.n}</h2><p>${empActual.profesion || ''} · ${sedesMap[empActual.c] || empActual.c}</p></div>
-            <button class="close-btn" onclick="cerrarLegajo()" style="border:none; background:none; cursor:pointer;">✕</button>
+    document.getElementById('modal-legajo').innerHTML = `
+<div class="legajo-window">
+    <div class="legajo-header">
+        <div>
+            <h2 style="margin:0;">${empActual.n}</h2>
+            <small style="opacity:0.8;">${empActual.profesion || 'Profesional'} · ${sedesMap[empActual.c] || empActual.c}</small>
         </div>
-
+        <button onclick="cerrarLegajo()" style="background:none; border:none; color:white; font-size:24px; cursor:pointer;">&times;</button>
+    </div>
+    
+    <div class="legajo-body">
         <div class="legajo-grid">
-            <div class="legajo-field"><label>CUIT</label><div>${empActual.cuit || '---'}</div></div>
-            <div class="legajo-field"><label>CBU</label><div>${empActual.cbu || '---'}</div></div>
-            <div class="legajo-field"><label>Sueldo Base</label><div>$${(parseFloat(empActual.vh) * (parseFloat(empActual.h)||0) * 17.32).toLocaleString()}</div></div>
-            <div class="legajo-field"><label>Horario</label><div>${empActual.hIngreso || '08:00'}</div></div>
+            <div class="field"><label>CUIT</label><div class="val">${empActual.cuit || '---'}</div></div>
+            <div class="field"><label>CBU</label><div class="val">${empActual.cbu || '---'}</div></div>
+            <div class="field"><label>Sueldo Base</label><div class="val">$${parseFloat(empActual.vh||0).toLocaleString()}</div></div>
+            <div class="field"><label>Horario</label><div class="val">${empActual.hIngreso || '08:00'}</div></div>
         </div>
 
         <div class="kpi-strip">
             <div class="kpi-box"><strong>${presente}</strong><br>Pres</div>
             <div class="kpi-box"><strong>${ausente}</strong><br>Aus</div>
-            <div class="kpi-box"><strong>${pctAusentismo}%</strong><br>Ausent</div>
+            <div class="kpi-box"><strong>${pctAusentismo}%</strong><br>% Ausent</div>
         </div>
 
-        <h4>💵 Historial Liquidaciones</h4>
-        <div style="max-height: 200px; overflow-y: auto; margin-bottom: 20px;">
-            ${htmlHistorial || '<p>No hay liquidaciones registradas.</p>'}
+        <div class="section-box">
+            <label>OBSERVACIONES</label>
+            <textarea id="obs-legajo" style="width:100%; border:1px solid #ddd; padding:8px; border-radius:5px; margin-top:5px;">${empActual.observaciones || ''}</textarea>
+            <button onclick="guardarObservacion()" style="margin-top:10px; width:100%; background:var(--cobalto); color:white; border:none; padding:8px; border-radius:5px; cursor:pointer;">💾 GUARDAR</button>
         </div>
 
-        <h4>📝 Observaciones</h4>
-        <textarea id="obs-legajo" style="width:100%; height:60px; padding:10px;">${empActual.observaciones || ''}</textarea>
-        <button onclick="guardarObservacion()" class="btn-wow" style="margin-top:10px; width:100%;">GUARDAR OBSERVACIÓN</button>
-
-        <h4>⭐ Evaluación</h4>
-        <div style="display:flex; gap:10px;">
-            <select id="eval-puntaje">${[1,2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${empActual.evaluacion?.puntaje == n ? 'selected' : ''}>${n}</option>`).join('')}</select>
-            <input type="text" id="eval-comentario" value="${empActual.evaluacion?.comentario || ''}" style="flex:1;">
-            <button onclick="guardarEvaluacion()" class="btn-wow">💾</button>
+        <div class="section-box">
+            <label>ANTICIPOS</label>
+            <div id="historial-anticipos" style="font-size:14px; margin-bottom:10px;"></div>
+            <div style="display:flex; gap:5px;">
+                <input type="number" id="pago-parcial-monto" placeholder="Monto" style="flex:1; padding:5px;">
+                <input type="date" id="pago-parcial-fecha" style="flex:1; padding:5px;">
+                <button onclick="registrarAnticipo()" style="background:var(--verde); color:white; border:none; padding:5px 10px; border-radius:5px;">REGISTRAR</button>
+            </div>
         </div>
     </div>
-    `;
+</div>
+`;
 }
 
 function calcularDiferenciaMinutos(hEsperada, hReal) {
