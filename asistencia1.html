@@ -1311,35 +1311,111 @@ async function abrirLegajo(idEmpleado) {
     if (!empActual) return alert("Profesional no encontrado");
 
     const c = empActual.c;
-    const mesActual = parseInt(mS.value) || new Date().getMonth() + 1;
+    // Respetamos el índice del mes según mS.value (0-11) para que coincida con renderLiq
+    const mesAct = parseInt(mS.value) >= 0 ? parseInt(mS.value) : new Date().getMonth();
     const anioActual = parseInt(aS.value) || 2026;
 
-    // 1. OBTENCIÓN DE DATOS (Ruta corregida sin SISTEMA_PERSONAL)
-    const [snapLiq, snapAsist] = await Promise.all([
+    // 1. OBTENCIÓN DE DATOS (Sumamos facturas_estado para todo el año)
+    const [snapLiq, snapAsist, snapFactAnio] = await Promise.all([
         baseDb.child(`liquidacionescongeladas`).once('value'),
-        dbAsistencia.child(`${anioActual}/${mesActual}/${c}/${empActual.id}`).once('value')
+        dbAsistencia.child(`${anioActual}/${mesAct}/${c}/${empActual.id}`).once('value'),
+        baseDb.child(`facturas_estado/${anioActual}`).once('value')
     ]);
 
     const liquidaciones = snapLiq.val() || {};
     const dataAsist = snapAsist.val() || {};
+    const todoElAnio = snapFactAnio.val() || {};
 
-    // 2. CÁLCULO DE MÉTRICAS (P, A, AC)
+    // 2. CÁLCULO DE DEUDAS Y FACTURAS
+    let mesesDeuda = [];
+    for(let i = 0; i < mesAct; i++) {
+        let isPagado = false;
+        try {
+            if (todoElAnio[i]) {
+                if (todoElAnio[i][c] && todoElAnio[i][c][empActual.id] !== undefined) isPagado = todoElAnio[i][c][empActual.id];
+                else if (todoElAnio[i][empActual.id] !== undefined) isPagado = todoElAnio[i][empActual.id];
+            }
+        } catch(e) {}
+        if(!isPagado) mesesDeuda.push(meses[i] ? meses[i].substring(0,3) : i);
+    }
+    const deudaStr = mesesDeuda.length > 0 ? mesesDeuda.join(', ') : 'Ninguna';
+
+    let pagadoAct = false;
+    try {
+        if (todoElAnio[mesAct]) {
+            if (todoElAnio[mesAct][c] && todoElAnio[mesAct][c][empActual.id] !== undefined) pagadoAct = todoElAnio[mesAct][c][empActual.id];
+            else if (todoElAnio[mesAct][empActual.id] !== undefined) pagadoAct = todoElAnio[mesAct][empActual.id];
+        }
+    } catch(e) {}
+
+    // 3. CÁLCULO DE MÉTRICAS BÁSICAS Y SUELDO EXACTO (Replicando renderLiq)
     let p = 0, a = 0, ac = 0, totalTardanzas = 0;
-    Object.keys(dataAsist).forEach(dia => {
-        const reg = dataAsist[dia];
-        if (reg && typeof reg === 'object') {
-            if (reg.status === 'P') p++;
-            else if (reg.status === 'A') a++;
-            else if (reg.status === 'AC') ac++;
-            
-            if (reg.in && empActual.hIngreso) {
-                const minutosTarde = calcularDiferenciaMinutos(empActual.hIngreso, reg.in);
-                if (minutosTarde > 15) totalTardanzas++;
+    
+    // Variables para el sueldo
+    let valorHora = parseFloat(empActual.vh) || 0;
+    let horasPorDia = parseFloat(empActual.h) || 0; 
+    let esquemaLimpio = (empActual.esquema || "").trim();
+    let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
+    const topeDiasMensuales = diasPorSemana * 4;
+
+    let horasTotalesAsistencia = 0;
+    let diasContadosAlTope = 0;
+    let contadorTardanzasCalc = 0;
+    const diasEnMes = new Date(anioActual, mesAct + 1, 0).getDate();
+
+    // Contamos p, a, ac (Original) y sumamos la lógica estricta del tope
+    for (let d = 1; d <= diasEnMes; d++) {
+        let reg = dataAsist[d];
+        if (!reg) continue;
+
+        let esPresencia = false;
+        let horasDeHoy = horasPorDia;
+        const valorTexto = reg.toString().toUpperCase();
+
+        // Conteo simple para UI
+        if (reg.status === 'P') p++;
+        else if (reg.status === 'A') a++;
+        else if (reg.status === 'AC') ac++;
+
+        // Lógica de topes y tardanzas para Sueldo
+        if (typeof reg === 'object' || valorTexto.startsWith('P') || valorTexto.startsWith('AC') || valorTexto.startsWith('F') || valorTexto.startsWith('T')) {
+            esPresencia = true;
+
+            if (typeof reg === 'object') {
+                if (reg.in && empActual.hIngreso) {
+                    let difIn = calcularDiferenciaMinutos(empActual.hIngreso, reg.in);
+                    if (difIn > 15) totalTardanzas++; // Para UI
+
+                    if (difIn > 15 && difIn <= 60) {
+                        contadorTardanzasCalc++;
+                        if (contadorTardanzasCalc >= 3) { esPresencia = false; contadorTardanzasCalc = 0; }
+                    } else if (difIn > 60) {
+                        let horasTarde = Math.floor(difIn / 60);
+                        horasDeHoy -= horasTarde;
+                    }
+                }
+
+                if (reg.out && empActual.hEgreso) {
+                    let difOut = calcularDiferenciaMinutos(reg.out, empActual.hEgreso);
+                    if (difOut > 15) {
+                        let horasAntes = Math.floor(difOut / 60);
+                        if (horasAntes > 0) horasDeHoy -= horasAntes;
+                    }
+                }
             }
         }
-    });
 
-    // 3. CÁLCULO SALIDA
+        if (esPresencia && diasContadosAlTope < topeDiasMensuales) {
+            horasTotalesAsistencia += Math.max(0, horasDeHoy);
+            diasContadosAlTope++;
+        }
+    }
+
+    let extras = parseFloat(dataAsist['EXT']) || 0;
+    let htFinal = horasTotalesAsistencia + extras;
+    let sueldoEstimado = Math.round(htFinal * valorHora);
+
+    // 4. CÁLCULO SALIDA
     let hSalida = "--:--";
     if(empActual.hIngreso && empActual.h) {
         let [hh, mm] = empActual.hIngreso.split(':').map(Number);
@@ -1349,7 +1425,7 @@ async function abrirLegajo(idEmpleado) {
         hSalida = `${hhS}:${mmS}`;
     }
 
-    // 4. RENDERIZADO DEL MODAL
+    // 5. RENDERIZADO DEL MODAL
     document.getElementById('modal-legajo').style.display = 'flex';
     document.getElementById('modal-legajo').innerHTML = `
     <div class="legajo-window" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
@@ -1382,21 +1458,36 @@ async function abrirLegajo(idEmpleado) {
             </div>
 
             <div style="grid-column: span 2; background:#f9f9f9; padding:10px; border:1px solid #ddd; border-radius:5px;">
-                <label>ESTADÍSTICAS MES ( <span style="color:green; font-weight:bold;">P: ${p}</span> | <span style="color:red; font-weight:bold;">A: ${a}</span> | <span style="color:blue; font-weight:bold;">AC: ${ac}</span> )</label>
-                <div style="font-size:16px;">Tardanzas (>15min): <b>${totalTardanzas}</b></div>
+                <label>ESTADÍSTICAS Y SUELDO MES (${meses[mesAct] || mesAct})</label>
+                <div style="font-size:16px; margin-top:5px;">
+                    <span style="color:green; font-weight:bold;">P: ${p}</span> | 
+                    <span style="color:red; font-weight:bold;">A: ${a}</span> | 
+                    <span style="color:blue; font-weight:bold;">AC: ${ac}</span>
+                </div>
+                <div style="font-size:15px; margin-top:8px;">
+                    Sueldo Estimado (Tope Aplicado): <b>$${sueldoEstimado.toLocaleString()}</b> 
+                    ( ${pagadoAct ? '<span style="color:green">✅ Pagado</span>' : '<span style="color:orange">🔴 Pendiente</span>'} )
+                </div>
+                <div style="font-size:14px; margin-top:5px; color:red;">
+                    <b>Deuda meses anteriores:</b> ${deudaStr}
+                </div>
+                <div style="font-size:14px; margin-top:5px;">Tardanzas (>15min): <b>${totalTardanzas}</b></div>
             </div>
 
             <div style="grid-column: span 2;">
                 <h4>💵 Historial Liquidaciones</h4>
-                <div style="max-height:100px; overflow-y:auto; border:1px solid #eee; padding:5px;">
-                    ${liquidaciones[c] ? Object.keys(liquidaciones[c]).map(anio => 
-                        Object.keys(liquidaciones[c][anio] || {}).map(mes => {
+                <div style="max-height:120px; overflow-y:auto; border:1px solid #eee; padding:5px; background:#fff;">
+                    ${liquidaciones[c] ? Object.keys(liquidaciones[c]).reverse().map(anio => 
+                        Object.keys(liquidaciones[c][anio] || {}).reverse().map(mes => {
                             const datos = liquidaciones[c][anio][mes][empActual.id];
                             if (!datos) return '';
-                            const esPendiente = datos.estado === 'pendiente' ? '<b style="color:orange;">(PENDIENTE)</b>' : '';
-                            return `<div>${meses[parseInt(mes)-1]} ${anio}: $${parseFloat(datos.total || 0).toLocaleString()} ${esPendiente}</div>`;
+                            const nombreMes = meses[parseInt(mes)] || mes; // Adaptado según si guardás 0-11 o texto
+                            return \`<div style="border-bottom:1px solid #ddd; padding:6px; font-size:13px;">
+                                <b>\${nombreMes} \${anio}:</b> $\${parseFloat(datos.total || 0).toLocaleString()} 
+                                <br><span style="color:#666;">Hs: \${datos.hs || 0} | Extras: \${datos.extras || 0} | VH: $\${datos.vh || 0}</span>
+                            </div>\`;
                         }).join('')
-                    ).join('') : 'No hay historial.'}
+                    ).join('') : '<div style="padding:5px;">No hay historial.</div>'}
                 </div>
             </div>
 
@@ -1417,7 +1508,7 @@ async function abrirLegajo(idEmpleado) {
                 <textarea id="leg-obs" style="width:100%" placeholder="Observaciones">${empActual.observaciones || ''}</textarea>
             </div>
 
-            <button onclick="guardarTodoLegajo()" style="grid-column: span 2; padding:15px; background:var(--cobalto); color:white; border:none; border-radius:5px;">GUARDAR TODO EL LEGAJO</button>
+            <button onclick="guardarTodoLegajo()" style="grid-column: span 2; padding:15px; background:var(--cobalto); color:white; border:none; border-radius:5px; font-weight:bold;">GUARDAR TODO EL LEGAJO</button>
         </div>
     </div>`;
     
