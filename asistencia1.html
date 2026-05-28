@@ -1311,25 +1311,26 @@ async function abrirLegajo(idEmpleado) {
     if (!empActual) return alert("Profesional no encontrado");
 
     const c = empActual.c;
-    const mesActual = parseInt(mS.value) || new Date().getMonth();
+    const mesActual = parseInt(mS.value) || new Date().getMonth() + 1;
     const anioActual = parseInt(aS.value) || 2026;
 
-    // 1. OBTENCIÓN DE DATOS
+    // 1. OBTENCIÓN DE DATOS (Ruta corregida sin SISTEMA_PERSONAL)
     const [snapLiq, snapAsist] = await Promise.all([
-        baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas`).once('value'),
+        baseDb.child(`liquidacionescongeladas`).once('value'),
         dbAsistencia.child(`${anioActual}/${mesActual}/${c}/${empActual.id}`).once('value')
     ]);
 
     const liquidaciones = snapLiq.val() || {};
     const dataAsist = snapAsist.val() || {};
 
-    // 2. CÁLCULO DE MÉTRICAS (P, A, AC y Tardanzas)
+    // 2. CÁLCULO DE MÉTRICAS (P, A, AC)
     let p = 0, a = 0, ac = 0, totalTardanzas = 0;
-    Object.values(dataAsist).forEach(reg => {
+    Object.keys(dataAsist).forEach(dia => {
+        const reg = dataAsist[dia];
         if (reg && typeof reg === 'object') {
             if (reg.status === 'P') p++;
-            if (reg.status === 'A') a++;
-            if (reg.status === 'AC') ac++;
+            else if (reg.status === 'A') a++;
+            else if (reg.status === 'AC') ac++;
             
             if (reg.in && empActual.hIngreso) {
                 const minutosTarde = calcularDiferenciaMinutos(empActual.hIngreso, reg.in);
@@ -1337,8 +1338,6 @@ async function abrirLegajo(idEmpleado) {
             }
         }
     });
-    const totalDias = p + a + ac;
-    const pctAusentismo = totalDias > 0 ? ((a / totalDias) * 100).toFixed(1) : 0;
 
     // 3. CÁLCULO SALIDA
     let hSalida = "--:--";
@@ -1382,22 +1381,22 @@ async function abrirLegajo(idEmpleado) {
                 </div>
             </div>
 
-            <div style="grid-column: span 2; background:#fff3f3; padding:10px; border:1px solid #ffcaca; border-radius:5px;">
-                <label>ESTADÍSTICAS MES (P: <span style="color:green; font-weight:bold;">${p}</span> | A: <span style="color:red; font-weight:bold;">${a}</span> | AC: <span style="color:blue; font-weight:bold;">${ac}</span>)</label>
-                <div style="font-size:16px;">% Ausentismo: <b>${pctAusentismo}%</b> | Tardanzas (>15min): <b>${totalTardanzas}</b></div>
+            <div style="grid-column: span 2; background:#f9f9f9; padding:10px; border:1px solid #ddd; border-radius:5px;">
+                <label>ESTADÍSTICAS MES ( <span style="color:green; font-weight:bold;">P: ${p}</span> | <span style="color:red; font-weight:bold;">A: ${a}</span> | <span style="color:blue; font-weight:bold;">AC: ${ac}</span> )</label>
+                <div style="font-size:16px;">Tardanzas (>15min): <b>${totalTardanzas}</b></div>
             </div>
 
             <div style="grid-column: span 2;">
                 <h4>💵 Historial Liquidaciones</h4>
                 <div style="max-height:100px; overflow-y:auto; border:1px solid #eee; padding:5px;">
-                    ${Object.keys(liquidaciones[empActual.c] || {}).map(anio => 
-                        Object.keys(liquidaciones[empActual.c][anio] || {}).map(mes => {
-                            const datos = liquidaciones[empActual.c][anio][mes][empActual.id];
+                    ${liquidaciones[c] ? Object.keys(liquidaciones[c]).map(anio => 
+                        Object.keys(liquidaciones[c][anio] || {}).map(mes => {
+                            const datos = liquidaciones[c][anio][mes][empActual.id];
                             if (!datos) return '';
                             const esPendiente = datos.estado === 'pendiente' ? '<b style="color:orange;">(PENDIENTE)</b>' : '';
-                            return `<div>${meses[mes]} ${anio}: $${parseFloat(datos.total || 0).toLocaleString()} ${esPendiente}</div>`;
+                            return `<div>${meses[parseInt(mes)-1]} ${anio}: $${parseFloat(datos.total || 0).toLocaleString()} ${esPendiente}</div>`;
                         }).join('')
-                    ).join('')}
+                    ).join('') : 'No hay historial.'}
                 </div>
             </div>
 
