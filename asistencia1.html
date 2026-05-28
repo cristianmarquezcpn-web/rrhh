@@ -1348,54 +1348,49 @@ async function abrirLegajo(idEmpleado) {
         }
     } catch(e) {}
 
-    // 3. CÁLCULO DE MÉTRICAS BÁSICAS Y SUELDO EXACTO (Replicando renderLiq)
-   // 3. CÁLCULO DE MÉTRICAS Y SUELDO (Lógica de Compromiso Mensual)
+// 3. CÁLCULO DE MÉTRICAS BÁSICAS Y SUELDO EXACTO
 let p = 0, a = 0, ac = 0, f = 0, totalTardanzas = 0;
 let valorHora = parseFloat(empActual.vh) || 0;
 let horasPorDia = parseFloat(empActual.h) || 0;
-
 let esquemaLimpio = (empActual.esquema || "").trim();
 let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
-// Horas que se compromete a trabajar en el mes (base de 4 semanas)
 let horasComprometidas = (diasPorSemana * 4) * horasPorDia;
 
 let horasDescontadasPorFaltas = 0;
 let horasTardanzaDescontadas = 0;
-let horasTrabajadasReales = 0; // Para control, aunque usaremos el compromiso
-
+let contadorTardanzasLeves = 0; 
 const diasEnMes = new Date(anioActual, mesAct + 1, 0).getDate();
 
 for (let d = 1; d <= diasEnMes; d++) {
     let reg = dataAsist[d];
     if (!reg) continue;
 
-    // Normalización: extraemos el status sin importar si es objeto o string
     let status = (typeof reg === 'object' && reg.status) ? reg.status : reg;
     status = status.toString().toUpperCase();
 
-    // Conteo para la UI
+    // Conteo UI
     if (status === 'P') p++;
     else if (status === 'A') a++;
     else if (status === 'AC') ac++;
     else if (status === 'F') f++;
 
-    // Lógica de DESCUENTO (si falta, resta)
-    if (status === 'A') {
-        horasDescontadasPorFaltas += horasPorDia;
-    } 
-    
-    // Lógica de TARDANZAS (si vino, calculamos si hay que descontar)
-    if (typeof reg === 'object') {
-        if (reg.in && empActual.hIngreso) {
-            let difIn = calcularDiferenciaMinutos(empActual.hIngreso, reg.in);
-            if (difIn > 15) {
-                totalTardanzas++;
-                if (difIn > 60) horasTardanzaDescontadas += Math.floor(difIn / 60);
+    // Lógica Descuento Faltas
+    if (status === 'A') horasDescontadasPorFaltas += horasPorDia;
+
+    // Lógica Tardanzas
+    if (typeof reg === 'object' && reg.in) {
+        let difIn = calcularDiferenciaMinutos(empActual.hIngreso, reg.in);
+        if (difIn > 15) {
+            totalTardanzas++;
+            if (difIn <= 60) {
+                contadorTardanzasLeves++;
+                if (contadorTardanzasLeves === 3) {
+                    horasDescontadasPorFaltas += horasPorDia;
+                    contadorTardanzasLeves = 0;
+                }
+            } else {
+                horasTardanzaDescontadas += Math.floor(difIn / 60);
             }
-        }
-        if (reg.out && empActual.hEgreso) {
-            let difOut = calcularDiferenciaMinutos(reg.out, empActual.hEgreso);
-            if (difOut > 15) horasTardanzaDescontadas += Math.floor(difOut / 60);
         }
     }
 }
@@ -1454,9 +1449,10 @@ let sueldoEstimado = Math.round(horasFinales * valorHora);
     			<span style="color:purple; font-weight:bold;">F: ${f}</span>
 				</div>
                 <div style="font-size:15px; margin-top:8px;">
-                    Sueldo Estimado (Tope Aplicado): <b>$${sueldoEstimado.toLocaleString()}</b> 
-                    ( ${pagadoAct ? '<span style="color:green">✅ Pagado</span>' : '<span style="color:orange">🔴 Pendiente</span>'} )
-                </div>
+    			Sueldo Estimado (Neto): <b>$${sueldoEstimado.toLocaleString()}</b>
+    			<br><small style="color:#666;">(Incluye ${parseFloat(dataAsist['EXT'] || 0)} horas extras)</small>
+   				 ( ${pagadoAct ? '<span style="color:green">✅ Pagado</span>' : '<span style="color:orange">🔴 Pendiente</span>'} )
+				</div>
                 <div style="font-size:14px; margin-top:5px; color:red;">
                     <b>Deuda meses anteriores:</b> ${deudaStr}
                 </div>
@@ -1480,15 +1476,15 @@ let sueldoEstimado = Math.round(horasFinales * valorHora);
                 </div>
             </div>
 
-            <div style="grid-column: span 2;">
-                <h4>💰 Anticipos</h4>
-                <div id="historial-anticipos"></div>
-                <div style="display:flex; gap:5px; margin-top:5px;">
-                    <input type="number" id="anticipo-monto" placeholder="$">
-                    <input type="date" id="anticipo-fecha">
-                    <button onclick="registrarAnticipo()">+</button>
-                </div>
-            </div>
+           <div style="grid-column: span 2;">
+   			 <h4>💰 Anticipos</h4>
+    			<div id="historial-anticipos"></div>
+    			<div style="display:flex; gap:5px; margin-top:5px;">
+        		<input type="number" id="pago-parcial-monto" placeholder="$">
+        		<input type="date" id="pago-parcial-fecha">
+        		<button onclick="registrarAnticipo()">+</button>
+    			</div>
+			</div>
 
             <div style="grid-column: span 2;">
                 <h4>📝 Evaluación y Obs</h4>
@@ -1519,26 +1515,35 @@ function guardarObservacion() {
     dbEmpleados.child(idx).update({ observaciones: obs });
     alert('✅ Guardado');
 }
-
 function registrarAnticipo() {
     const monto = document.getElementById('pago-parcial-monto').value;
     const fecha = document.getElementById('pago-parcial-fecha').value;
+    
+    if (!monto || !fecha) return alert("Completa monto y fecha");
+
     const anticipos = empActual.anticipos || [];
     anticipos.push({ monto: parseFloat(monto), fecha });
+    
+    // Guardamos en la base de datos
     dbEmpleados.child(empleados.indexOf(empActual)).update({ anticipos });
+    
+    // Refrescamos la visual del historial
     renderHistorialAnticipos();
 }
+window.sueldoCalculadoParaHistorial = sueldoEstimado; 
 
 function renderHistorialAnticipos() {
     const container = document.getElementById('historial-anticipos');
     const anticipos = empActual.anticipos || [];
     const totalDado = anticipos.reduce((sum, a) => sum + parseFloat(a.monto), 0);
-    const sueldoBase = (parseFloat(empActual.h) || 0) * 4 * 4.33 * (parseFloat(empActual.vh) || 0);
-    const faltante = Math.max(0, sueldoBase - totalDado);
+    
+    // Ahora leemos el sueldo calculado correctamente
+    const sueldoNeto = window.sueldoCalculadoParaHistorial || 0;
+    const faltante = Math.max(0, sueldoNeto - totalDado);
     
     container.innerHTML = `
-        <p>💰 Anticipado: $${totalDado.toLocaleString()} | 📌 Faltante: $${faltante.toLocaleString()}</p>
-        ${anticipos.map(a => `<p>${a.fecha}: $${a.monto}</p>`).join('')}
+        <p>💰 Anticipado: $${totalDado.toLocaleString()} | 📌 Faltante: <b>$${faltante.toLocaleString()}</b></p>
+        ${anticipos.map(a => `<p>${a.fecha}: $${a.monto.toLocaleString()}</p>`).join('')}
     `;
 }
 
