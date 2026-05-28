@@ -103,18 +103,39 @@
     .AC { background: var(--azul) !important; color: white; }
     .F { background: #9b59b6 !important; color: white; }
     .bloqueado { background: #e9ecef !important; color: #999; pointer-events: none; }
-
-	/* --- NUEVO MÓDULO EMPLEADOS --- */
+	/* --- LO QUE YA TENÍAS (Mantenlo) --- */
 .empleado-sede-card { background: white; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); overflow: hidden; }
 .sede-header { background: var(--cobalto); color: white; padding: 12px 20px; font-weight: 800; display: flex; justify-content: space-between; cursor: pointer; }
 .empleado-lista { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
 .empleado-chip { background: #f0f4ff; border: 2px solid #d0d8ff; border-radius: 25px; padding: 8px 18px; font-weight: 700; cursor: pointer; color: var(--cobalto); }
-#modal-legajo { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 5000; justify-content: center; align-items: center; }
-.legajo-window { background: #f8f9fa; width: 95%; max-width: 900px; max-height: 90vh; overflow-y: auto; border-radius: 20px; padding: 25px; position: relative; }
-.legajo-header { display: flex; justify-content: space-between; border-bottom: 2px solid var(--cobalto); margin-bottom: 15px; }
-.legajo-section-title { font-weight: 800; color: var(--cobalto); margin-top: 20px; border-bottom: 1px solid #ccc; }
-.kpi-strip { display: flex; gap: 10px; margin-top: 10px; }
-.kpi-box { background: white; padding: 10px; text-align: center; border-radius: 8px; flex: 1; border: 1px solid #eee; }
+
+/* --- LO NUEVO PARA EL MODAL WOW (Reemplaza lo viejo por esto) --- */
+#modal-legajo { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 5000; justify-content: center; align-items: center; }
+
+.legajo-card { background: #fff; width: 95%; max-width: 850px; height: 85vh; border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+
+.legajo-header { background: var(--cobalto); color: white; padding: 25px; display: flex; justify-content: space-between; align-items: center; }
+
+/* Tabs */
+.tab-container { display: flex; background: #f8f9fa; border-bottom: 1px solid #ddd; padding: 0 20px; }
+.tab-btn { padding: 15px 20px; border: none; background: none; font-weight: 800; color: #7f8c8d; cursor: pointer; transition: 0.3s; }
+.tab-btn.active { color: var(--cobalto); border-bottom: 3px solid var(--cobalto); }
+
+.tab-content { padding: 25px; overflow-y: auto; flex-grow: 1; }
+
+/* Elementos visuales */
+.legajo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px; }
+.legajo-field { background: #f4f4f4; padding: 15px; border-radius: 10px; }
+.legajo-field label { display: block; font-size: 0.75rem; color: #666; text-transform: uppercase; margin-bottom: 5px; }
+
+.kpi-strip { display: flex; gap: 10px; margin-bottom: 20px; }
+.kpi-box { flex: 1; padding: 15px; border-radius: 10px; background: #fff; text-align: center; border: 1px solid #eee; }
+
+.card-historial { border: 1px solid #eee; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+
+.badge { padding: 5px 12px; border-radius: 15px; font-size: 0.8em; font-weight: bold; }
+.status-pagado { background: #d4edda; color: #155724; }
+.status-pendiente { background: #f8d7da; color: #721c24; }
 </style>
 </head>
 <body>
@@ -1247,133 +1268,96 @@ function renderEmpleados() {
 // ============================================================
 let empActual = null;
 
-function abrirLegajo(idEmpleado) {
+async function abrirLegajo(idEmpleado) {
     empActual = empleados.find(e => (e.id || e.n) === idEmpleado);
     if (!empActual) return alert("Profesional no encontrado");
-    
+
     const c = empActual.c;
-    const a = 2026;
-    const m = new Date().getMonth();
-    const mesActual = parseInt(mS.value) || m;
-    const anioActual = parseInt(aS.value) || a;
-    
-    Promise.all([
-    dbAsistencia.child(`${anioActual}/${mesActual}/${c}/${empActual.id}`).once('value'),
-    // Usamos la ruta con guion bajo:
-    baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas`).once('value'),
-    // Corregido a facturas_estado:
-    baseDb.child(`facturas_estado/${anioActual}`).once('value') 
+    const mesActual = parseInt(mS.value) || new Date().getMonth();
+    const anioActual = parseInt(aS.value) || 2026;
 
-    ]).then(([snapAsist, snapLiq, snapFact]) => {
-        const dataAsist = snapAsist.val() || {};
-        const liquidaciones = snapLiq.val() || {};
-        const facturasEstado = snapFact.val() || {};
-        
-        let presente = 0, ausente = 0, feriado = 0;
-        let arrAsistencia = [];
-        
-        Object.keys(dataAsist).forEach(d => {
-            if (d === 'EXT') return;
-            const val = dataAsist[d];
-            const esObj = val !== null && typeof val === 'object';
-            
-            let estado = esObj ? (val.val || 'P') : (val ? val.toString().toUpperCase() : '');
-            let horaIn = esObj ? (val.in || '--') : '--';
-            let horaOut = esObj ? (val.out || '--') : '--';
-            let minsTarde = 0;
-            
-            if (esObj && horaIn !== '--' && empActual.hIngreso) {
-                minsTarde = calcularDiferenciaMinutos(empActual.hIngreso, horaIn);
+    // Ejecutamos las promesas para obtener datos
+    const [snapAsist, snapLiq, snapFact] = await Promise.all([
+        dbAsistencia.child(`${anioActual}/${mesActual}/${c}/${empActual.id}`).once('value'),
+        baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas`).once('value'),
+        baseDb.child(`facturas_estado/${anioActual}`).once('value')
+    ]);
+
+    const dataAsist = snapAsist.val() || {};
+    const liquidaciones = snapLiq.val() || {};
+    const facturasEstado = snapFact.val() || {};
+
+    // --- LÓGICA ASISTENCIA ---
+    let presente = 0, ausente = 0;
+    let arrAsistencia = [];
+    Object.keys(dataAsist).forEach(d => {
+        if (d === 'EXT') return;
+        const val = dataAsist[d];
+        const estado = (val && typeof val === 'object') ? (val.val || 'P') : (val ? val.toString().toUpperCase() : '');
+        if (estado === 'P' || estado === 'T') presente++;
+        else if (estado === 'A') ausente++;
+        arrAsistencia.push({ dia: parseInt(d), estado });
+    });
+    const pctAusentismo = (presente + ausente) > 0 ? ((ausente / (presente + ausente)) * 100).toFixed(1) : '0.0';
+
+    // --- LÓGICA HISTORIAL DE LIQUIDACIONES ---
+    let htmlHistorial = "";
+    // Buscamos en la sede específica y año, iterando los meses
+    if (liquidaciones[c] && liquidaciones[c][anioActual]) {
+        Object.keys(liquidaciones[c][anioActual]).forEach(mes => {
+            const dataMes = liquidaciones[c][anioActual][mes][empActual.id];
+            if (dataMes) {
+                const estaPagado = facturasEstado[mes]?.[c]?.[empActual.id];
+                htmlHistorial += `
+                <div class="card-historial">
+                    <div><strong>${meses[mes] || 'Mes '+mes}</strong><br>Total: $${parseFloat(dataMes.total).toLocaleString()}</div>
+                    <span class="status-tag" style="background:${estaPagado ? '#d4edda' : '#f8d7da'}; color:${estaPagado ? '#155724' : '#721c24'}">
+                        ${estaPagado ? '🟢 PAGADO' : '🔴 PENDIENTE'}
+                    </span>
+                </div>`;
             }
-            
-            if (estado === 'P' || estado === '' || estado === 'T') presente++;
-            else if (estado === 'A') ausente++;
-            else if (estado === 'F') feriado++;
-            
-            arrAsistencia.push({ dia: parseInt(d), estado, horaIn, horaOut, minsTarde });
         });
-        
-        const totalLaborables = presente + ausente;
-        const pctAusentismo = totalLaborables > 0 ? ((ausente / totalLaborables) * 100).toFixed(1) : '0.0';
-        
-        // Historial Sueldos
-        let historialSueldos = [];
-        for (let mesIdx = 0; mesIdx <= mesActual; mesIdx++) {
-            for (let sed in liquidaciones) {
-                const congelado = liquidaciones[sed]?.[anioActual]?.[mesIdx]?.[empActual.id];
-                if (congelado) {
-                    historialSueldos.push({
-                        periodo: `${meses[mesIdx]} ${anioActual}`,
-                        horas: congelado.hs,
-                        valorHora: congelado.vh,
-                        total: congelado.total,
-                        estado: (facturasEstado?.[mesIdx]?.[empActual.c]?.[empActual.id]) ? '🟢 Pagado' : '🔴 Pendiente'
-                    });
-                }
-            }
-        }
-        
-        // Facturas Adeudadas
-        let facturasAdeudadas = [];
-        for (let i = 0; i < mesActual; i++) {
-            const pagado = facturasEstado?.[i]?.[empActual.c]?.[empActual.id];
-            if (!pagado) {
-                const liqPasada = Object.values(liquidaciones).find(s => s?.[anioActual]?.[i]?.[empActual.id]);
-                const montoEst = liqPasada ? liqPasada[anioActual][i][empActual.id].total : '---';
-                facturasAdeudadas.push({ periodo: `${meses[i]} ${anioActual}`, monto: montoEst });
-            }
-        }
-        
-        let tardanzasList = arrAsistencia.filter(a => a.minsTarde > 15);
-        const sueldoBase = (parseFloat(empActual.h) || 0) * 4 * 4.33 * (parseFloat(empActual.vh) || 0);
-        
-        document.getElementById('modal-legajo').style.display = 'flex';
-        
-        document.getElementById('legajo-content').innerHTML = `
-        <div class="legajo-header">
-            <div><h2>${empActual.n}</h2><span>${empActual.profesion || ''} · ${sedesMap[empActual.c] || empActual.c}</span></div>
-            <button class="close-btn" onclick="cerrarLegajo()">✕</button>
-        </div>
-        
-        <div class="legajo-section-title">📋 DATOS LEGAJO</div>
-        <div class="legajo-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-        <div class="legajo-field"><label>CUIT</label><div class="value">${empActual.cuit || '---'}</div></div>
-        <div class="legajo-field"><label>CBU / Alias</label><div class="value">${empActual.cbu || '---'}</div></div>
-        <div class="legajo-field"><label>Sueldo Base Estimado</label><div class="value">$${Math.round(sueldoBase).toLocaleString()}</div></div>
-        <div class="legajo-field"><label>Horario</label><div class="value">${empActual.hIngreso || '08:00'} a ${empActual.hEgreso || '--'}</div></div>
-        <div class="legajo-field"><label>Esquema</label><div class="value">${empActual.esquema || '---'}</div></div>
-        <div class="legajo-field"><label>Fecha Ingreso</label><div class="value">${empActual.fIngreso || '---'}</div></div>
-    </div>
-		 <div class="kpi-strip">
-            <div class="kpi-box"><div class="kpi-num" style="color:var(--verde);">${presente}</div><div class="kpi-label">Pres</div></div>
-            <div class="kpi-box"><div class="kpi-num" style="color:var(--rojo);">${ausente}</div><div class="kpi-label">Aus</div></div>
-            <div class="kpi-box"><div class="kpi-num" style="color:var(--rojo);">${pctAusentismo}%</div><div class="kpi-label">% Ausent</div></div>
-            <div class="kpi-box"><div class="kpi-num" style="color:var(--oro);">${tardanzasList.length}</div><div class="kpi-label">⚠️ Tarde</div></div>
+    }
+
+    // --- RENDERIZADO FINAL ---
+    document.getElementById('modal-legajo').style.display = 'flex';
+    document.getElementById('legajo-content').innerHTML = `
+    <div class="legajo-container">
+        <div class="legajo-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <div><h2>${empActual.n}</h2><p>${empActual.profesion || ''} · ${sedesMap[empActual.c] || empActual.c}</p></div>
+            <button class="close-btn" onclick="cerrarLegajo()" style="border:none; background:none; cursor:pointer;">✕</button>
         </div>
 
-        <div class="legajo-section-title">📝 OBSERVACIONES</div>
-        <div style="display:flex; gap:10px;">
-            <textarea id="obs-legajo" style="flex:1; min-height:80px; padding:10px;">${empActual.observaciones || ''}</textarea>
-            <button onclick="guardarObservacion()" style="background:var(--cobalto); color:white; border:none; padding:10px; cursor:pointer;">💾 GUARDAR</button>
+        <div class="legajo-grid">
+            <div class="legajo-field"><label>CUIT</label><div>${empActual.cuit || '---'}</div></div>
+            <div class="legajo-field"><label>CBU</label><div>${empActual.cbu || '---'}</div></div>
+            <div class="legajo-field"><label>Sueldo Base</label><div>$${(parseFloat(empActual.vh) * (parseFloat(empActual.h)||0) * 17.32).toLocaleString()}</div></div>
+            <div class="legajo-field"><label>Horario</label><div>${empActual.hIngreso || '08:00'}</div></div>
         </div>
 
-        <div class="legajo-section-title">💵 PAGO PARCIAL / ANTICIPO</div>
-        <div style="background:#fff; padding:10px; border-radius:10px;">
-            <input type="number" id="pago-parcial-monto" placeholder="Monto">
-            <input type="date" id="pago-parcial-fecha">
-            <button onclick="registrarAnticipo()">REGISTRAR</button>
-            <div id="historial-anticipos"></div>
+        <div class="kpi-strip">
+            <div class="kpi-box"><strong>${presente}</strong><br>Pres</div>
+            <div class="kpi-box"><strong>${ausente}</strong><br>Aus</div>
+            <div class="kpi-box"><strong>${pctAusentismo}%</strong><br>Ausent</div>
         </div>
 
-        <div class="legajo-section-title">⭐ EVALUACIÓN</div>
+        <h4>💵 Historial Liquidaciones</h4>
+        <div style="max-height: 200px; overflow-y: auto; margin-bottom: 20px;">
+            ${htmlHistorial || '<p>No hay liquidaciones registradas.</p>'}
+        </div>
+
+        <h4>📝 Observaciones</h4>
+        <textarea id="obs-legajo" style="width:100%; height:60px; padding:10px;">${empActual.observaciones || ''}</textarea>
+        <button onclick="guardarObservacion()" class="btn-wow" style="margin-top:10px; width:100%;">GUARDAR OBSERVACIÓN</button>
+
+        <h4>⭐ Evaluación</h4>
         <div style="display:flex; gap:10px;">
             <select id="eval-puntaje">${[1,2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${empActual.evaluacion?.puntaje == n ? 'selected' : ''}>${n}</option>`).join('')}</select>
             <input type="text" id="eval-comentario" value="${empActual.evaluacion?.comentario || ''}" style="flex:1;">
-            <button onclick="guardarEvaluacion()">GUARDAR</button>
+            <button onclick="guardarEvaluacion()" class="btn-wow">💾</button>
         </div>
-        `;
-        renderHistorialAnticipos();
-    });
+    </div>
+    `;
 }
 
 function calcularDiferenciaMinutos(hEsperada, hReal) {
