@@ -629,6 +629,7 @@ async function renderLiq() {
     const m = parseInt(mS.value), a = parseInt(aS.value);
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
     dbAsistencia.off();
+    
     // 1. Traemos el estado de las facturas una sola vez
     const fSnap = await baseDb.child(`facturas_estado/${a}`).once('value');
     const todoElAnio = fSnap.val() || {};
@@ -636,7 +637,7 @@ async function renderLiq() {
     // 2. Definimos la ruta de consulta según el centro activo
     const ruta = centroLiqActivo === "TODOS" ? `${a}/${m}` : `${a}/${m}/${centroLiqActivo}`;
     
-    // 3. CAMBIO CRÍTICO: Usamos .once() para destruir las escuchas viejas y evitar que se mezcle la información
+    // 3. Usamos .once() para destruir las escuchas viejas y evitar que se mezcle la información
     const snapshot = await dbAsistencia.child(ruta).once('value');
     const snapshotData = snapshot.val() || {}; 
     const diasEnMes = new Date(a, m + 1, 0).getDate();
@@ -646,7 +647,7 @@ async function renderLiq() {
         (centroLiqActivo === "TODOS" || e.c === centroLiqActivo) && !e.fechaBaja
     );
     
-    // 5. CONTROL DEL CONTADOR: Forzamos la actualización del elemento en el HTML
+    // 5. CONTROL DEL CONTADOR: Actualización del elemento en el HTML
     const cont = document.getElementById('contador-liq');
     if (cont) {
         cont.innerText = `Total profesionales: ${lista.length}`;
@@ -656,10 +657,17 @@ async function renderLiq() {
 
     // 6. Procesamos y renderizamos los datos de forma síncrona y segura
     document.getElementById('b-liq').innerHTML = lista.map(e => {
-        // Estructuración de la asistencia según el modo (TODOS o sede individual)
-        const asistE = centroLiqActivo === "TODOS" 
-            ? (snapshotData[e.c] ? snapshotData[e.c][e.id] : {}) 
-            : (snapshotData[e.id] || {});
+        // 🔥 SOLUCIÓN AL ERROR: Búsqueda ultra segura que jamás devuelve undefined
+        let asistE = {};
+        if (centroLiqActivo === "TODOS") {
+            // Buscamos la clave de la sede ignorando espacios y diferencias de mayúsculas/minúsculas
+            const sedeKey = Object.keys(snapshotData).find(k => k.trim().toUpperCase() === (e.c || "").trim().toUpperCase());
+            if (sedeKey && snapshotData[sedeKey] && snapshotData[sedeKey][e.id]) {
+                asistE = snapshotData[sedeKey][e.id];
+            }
+        } else {
+            asistE = snapshotData[e.id] || {};
+        }
         
         let valorHora = parseFloat(e.vh) || 0;
         let horasPorDia = parseFloat(e.h) || 0; 
@@ -724,11 +732,9 @@ async function renderLiq() {
             }
         } catch (err) { console.error("Error al comprobar pago:", e.n, err); }
 
-        // 🔥 MODIFICACIÓN AQUÍ: Creamos la cadena discriminada
-        // En la celda se leerá, por ejemplo: "80.0 + 5.0 (85.0)"
+        // Mantenemos tu diseño de horas discriminadas solicitado
         let horasDiscriminadas = `${horasBase.toFixed(1)} + ${extras.toFixed(1)} (${htFinal.toFixed(1)})`;
 
-        // Pasamos 'horasDiscriminadas' en lugar de 'htFinal.toFixed(1)'
         return generarFilaLiq(e, horasDiscriminadas, totalCalc, pagado, valorHora, false, todoElAnio, m);
     }).join('');
 }
@@ -1062,7 +1068,7 @@ function imprimirPlanillaAsistencia() {
         setTimeout(() => { ventana.print(); }, 1500);
     });
 }
-async function congelarmesActual(c, a, m, snapshotData) {
+async function congelarMesActual(c, a, m, snapshotData) {
     let fotos = {};
     const diasEnMes = new Date(a, m + 1, 0).getDate();
     const lista = empleados.filter(e => 
