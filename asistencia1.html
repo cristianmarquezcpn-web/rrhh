@@ -1142,9 +1142,9 @@ async function congelarMesActual(c, a, m, snapshotData) {
         };
     });
 
-    baseDb.child(`liquidacionescongeladas/${c}/${a}/${m}`).set(fotos)
+    baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas/${c}/${a}/${m}`).set(fotos)
     .then(() => {
-        alert("Liquidación congelada correctamente con nuevo cálculo.");
+        alert("Liquidación congelada correctamente en la ruta correcta.");
         renderLiq();
     })
     .catch(err => alert("Error al guardar: " + err.message));
