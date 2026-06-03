@@ -657,10 +657,8 @@ async function renderLiq() {
 
     // 6. Procesamos y renderizamos los datos de forma síncrona y segura
     document.getElementById('b-liq').innerHTML = lista.map(e => {
-        // 🔥 SOLUCIÓN AL ERROR: Búsqueda ultra segura que jamás devuelve undefined
         let asistE = {};
         if (centroLiqActivo === "TODOS") {
-            // Buscamos la clave de la sede ignorando espacios y diferencias de mayúsculas/minúsculas
             const sedeKey = Object.keys(snapshotData).find(k => k.trim().toUpperCase() === (e.c || "").trim().toUpperCase());
             if (sedeKey && snapshotData[sedeKey] && snapshotData[sedeKey][e.id]) {
                 asistE = snapshotData[sedeKey][e.id];
@@ -672,53 +670,52 @@ async function renderLiq() {
         let valorHora = parseFloat(e.vh) || 0;
         let horasPorDia = parseFloat(e.h) || 0; 
         
-        // Cálculo del tope mensual en base al esquema del legajo
         let esquemaLimpio = (e.esquema || "").trim();
         let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
         const topeHorasMensuales = diasPorSemana * 4 * horasPorDia;
 
-        let horasDePresenciaEfectiva = 0;
+        // LÓGICA DE TOPE ESTRICTO: Partimos del tope y descontamos faltas
+        let horasDePresenciaEfectiva = topeHorasMensuales;
         let contadorTardanzas = 0;
 
-        // Recorremos los días del mes
         for (let d = 1; d <= diasEnMes; d++) {
             let reg = asistE[d];
-            if (!reg) continue;
-
-            let esPresencia = false;
-            let horasDeHoy = horasPorDia;
-            const valorTexto = reg.toString().toUpperCase();
             
-            if (typeof reg === 'object' || valorTexto.startsWith('P') || valorTexto.startsWith('AC') || valorTexto.startsWith('F') || valorTexto.startsWith('T')) {
-                esPresencia = true;
+            // Si el día está vacío, restamos la jornada completa
+            if (!reg) {
+                horasDePresenciaEfectiva -= horasPorDia;
+                continue;
+            }
 
-                if (typeof reg === 'object') {
-                    if (reg.in && e.hIngreso) {
-                        let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
-                        if (difIn > 15 && difIn <= 60) {
-                            contadorTardanzas++;
-                            if (contadorTardanzas >= 3) { esPresencia = false; contadorTardanzas = 0; }
-                        } else if (difIn > 60) {
-                            horasDeHoy -= Math.floor(difIn / 60);
-                        }
+            const valorTexto = reg.toString().toUpperCase();
+            const esPago = ['P', 'AC', 'F', 'T'].includes(valorTexto) || typeof reg === 'object';
+
+            if (!esPago) {
+                // Es falta real (ej: 'A'), descontamos jornada
+                horasDePresenciaEfectiva -= horasPorDia;
+            } else if (typeof reg === 'object') {
+                // Gestión de tardanzas en registros complejos
+                if (reg.in && e.hIngreso) {
+                    let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
+                    if (difIn > 15 && difIn <= 60) {
+                        contadorTardanzas++;
+                        if (contadorTardanzas >= 3) { horasDePresenciaEfectiva -= horasPorDia; contadorTardanzas = 0; }
+                    } else if (difIn > 60) {
+                        horasDePresenciaEfectiva -= Math.floor(difIn / 60);
                     }
-                    if (reg.out && e.hEgreso) {
-                        let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
-                        if (difOut > 15) {
-                            let horasAntes = Math.floor(difOut / 60);
-                            if (horasAntes > 0) horasDeHoy -= horasAntes;
-                        }
+                }
+                if (reg.out && e.hEgreso) {
+                    let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
+                    if (difOut > 15) {
+                        let horasAntes = Math.floor(difOut / 60);
+                        if (horasAntes > 0) horasDePresenciaEfectiva -= horasAntes;
                     }
                 }
             }
-
-            if (esPresencia) {
-                horasDePresenciaEfectiva += Math.max(0, horasDeHoy);
-            }
         }
 
-        // --- PROCESAMIENTO MATEMÁTICO TRANSPARENTE ---
-        let horasBase = Math.min(horasDePresenciaEfectiva, topeHorasMensuales);
+        // --- PROCESAMIENTO MATEMÁTICO ---
+        let horasBase = Math.max(0, horasDePresenciaEfectiva);
         let extras = parseFloat(asistE['EXT']) || 0;
         let htFinal = horasBase + extras;
         let totalCalc = Math.round(htFinal * valorHora);
@@ -732,7 +729,6 @@ async function renderLiq() {
             }
         } catch (err) { console.error("Error al comprobar pago:", e.n, err); }
 
-        // Mantenemos tu diseño de horas discriminadas solicitado
         let horasDiscriminadas = `${horasBase.toFixed(1)} + ${extras.toFixed(1)} (${htFinal.toFixed(1)})`;
 
         return generarFilaLiq(e, horasDiscriminadas, totalCalc, pagado, valorHora, false, todoElAnio, m);
@@ -748,11 +744,9 @@ function generarFilaLiq(e, hs, tot, pagado, vh, congelado, todoElAnio, mesAct) {
     const deudaStr = mesesDeuda.join(', ');
     const badgeDeuda = deudaStr ? `<br><span style="color:red; font-size:10px;">Debe: ${deudaStr}</span>` : "";
 
-    // Definimos los valores primero
     const periodoVal = meses[mesAct] + " " + aS.value;
     const centroVal = e.c;
 
-    // Construimos la fila
     let fila = `<tr>
         <td><b>${e.n}</b> ${congelado ? '🔒' : ''} ${badgeDeuda} </td>
         <td><small>${e.cuit || '-'}</small></td>
@@ -762,7 +756,6 @@ function generarFilaLiq(e, hs, tot, pagado, vh, congelado, todoElAnio, mesAct) {
         <td style="cursor:pointer;" onclick="toggleFactura('${e.id}')">${pagado ? '🟢' : '🔴'}</td>
         <td>`;
     
-    // Agregamos el botón de forma separada para evitar el error de comillas
     fila += `<button class="btn btn-primary" onclick="enviarMail('${e.m}', '${e.n}', '${hs}', '${tot}', '${e.cbu || ''}', '${deudaStr}', '${periodoVal}', '${centroVal}')">✉️</button>`;
     
     fila += `</td></tr>`;
