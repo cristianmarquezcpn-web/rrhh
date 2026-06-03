@@ -1069,11 +1069,17 @@ function imprimirPlanillaAsistencia() {
     });
 }
 async function congelarMesActual(c, a, m, snapshotData) {
+    console.log("--- INICIO CONGELADO ---");
+    console.log(`Parámetros: Centro=${c}, Año=${a}, Mes=${m}`);
+    
     let fotos = {};
     const diasEnMes = new Date(a, m + 1, 0).getDate();
+    
     const lista = empleados.filter(e => 
         (c === "TODOS" || e.c === c) && !e.fechaBaja
     );
+
+    console.log(`Empleados a procesar: ${lista.length}`);
 
     lista.forEach(e => {
         const asistE = c === "TODOS" ? (snapshotData[e.c] ? snapshotData[e.c][e.id] : {}) : (snapshotData[e.id] || {});
@@ -1083,7 +1089,6 @@ async function congelarMesActual(c, a, m, snapshotData) {
         
         let esquemaLimpio = (e.esquema || "").trim();
         let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
-        // Calculamos el tope real en horas (no en días)
         const topeHorasMensuales = diasPorSemana * 4 * horasPorDia;
 
         let horasDePresenciaEfectiva = 0;
@@ -1125,12 +1130,8 @@ async function congelarMesActual(c, a, m, snapshotData) {
             }
         }
 
-        // --- LÓGICA UNIFICADA ---
-        // 1. Horas base con tope mensual
         let horasBase = Math.min(horasDePresenciaEfectiva, topeHorasMensuales);
-        // 2. Extras fuera del tope
         let extras = parseFloat(asistE['EXT']) || 0;
-        // 3. Total
         let htFinal = horasBase + extras;
         
         fotos[e.id] = {
@@ -1142,12 +1143,19 @@ async function congelarMesActual(c, a, m, snapshotData) {
         };
     });
 
-    baseDb.child(`SISTEMA_PERSONAL/liquidacionescongeladas/${c}/${a}/${m}`).set(fotos)
+    console.log("Objeto final a guardar en Firebase:", fotos);
+
+    // Guardado mediante la ruta absoluta para evitar errores de referencia de variable
+    firebase.database().ref(`SISTEMA_PERSONAL/liquidacionescongeladas/${c}/${a}/${m}`).set(fotos)
     .then(() => {
+        console.log("✅ Guardado en Firebase exitoso.");
         alert("Liquidación congelada correctamente en la ruta correcta.");
         renderLiq();
     })
-    .catch(err => alert("Error al guardar: " + err.message));
+    .catch(err => {
+        console.error("❌ Error al guardar:", err);
+        alert("Error al guardar: " + err.message);
+    });
 }
 function obtenerHorasEsquema(e, d, m, a) {
     // CAMBIO CLAVE: En tu Firebase se llama 'e' (ej: "1,2,3,4,5")
