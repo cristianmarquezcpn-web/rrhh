@@ -244,7 +244,7 @@
 <div id="liquidacion" class="modulo-div" style="display:none">
     <div class="card" id="btns-liq" style="display:flex; gap:5px; flex-wrap:wrap;"></div>
     <div id="count-pend" style="margin: 10px 0; font-weight: bold;"></div>
-    
+    <div id="contador-liq" style="font-weight: bold; margin: 10px 0; color: var(--cobalto);"></div>
     <div class="card">
         <div style="background: #f4f4f4; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
             <button onclick="imprimirPlanillaAsistencia()" class="btn" style="background: var(--cobalto); color: white;">
@@ -629,99 +629,112 @@ async function renderLiq() {
     const m = parseInt(mS.value), a = parseInt(aS.value);
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
     
+    // 1. Traemos el estado de las facturas una sola vez
     const fSnap = await baseDb.child(`facturas_estado/${a}`).once('value');
     const todoElAnio = fSnap.val() || {};
+    
+    // 2. Definimos la ruta de consulta según el centro activo
     const ruta = centroLiqActivo === "TODOS" ? `${a}/${m}` : `${a}/${m}/${centroLiqActivo}`;
     
-    dbAsistencia.child(ruta).on('value', snapshot => {
-        const snapshotData = snapshot.val() || {}; 
-        const diasEnMes = new Date(a, m + 1, 0).getDate();
+    // 3. CAMBIO CRÍTICO: Usamos .once() para destruir las escuchas viejas y evitar que se mezcle la información
+    const snapshot = await dbAsistencia.child(ruta).once('value');
+    const snapshotData = snapshot.val() || {}; 
+    const diasEnMes = new Date(a, m + 1, 0).getDate();
+    
+    // 4. Filtramos la lista de profesionales en base al centro seleccionado
+    const lista = empleados.filter(e => 
+        (centroLiqActivo === "TODOS" || e.c === centroLiqActivo) && !e.fechaBaja
+    );
+    
+    // 5. CONTROL DEL CONTADOR: Forzamos la actualización del elemento en el HTML
+    const cont = document.getElementById('contador-liq');
+    if (cont) {
+        cont.innerText = `Total profesionales: ${lista.length}`;
+    } else {
+        console.warn("Falta crear el elemento con id='contador-liq' en tu HTML.");
+    }
+
+    // 6. Procesamos y renderizamos los datos de forma síncrona y segura
+    document.getElementById('b-liq').innerHTML = lista.map(e => {
+        // Estructuración de la asistencia según el modo (TODOS o sede individual)
+        const asistE = centroLiqActivo === "TODOS" 
+            ? (snapshotData[e.c] ? snapshotData[e.c][e.id] : {}) 
+            : (snapshotData[e.id] || {});
         
-        // Filtrado de empleados y actualización del contador
-        const lista = empleados.filter(e => 
-            (centroLiqActivo === "TODOS" || e.c === centroLiqActivo) && !e.fechaBaja
-        );
+        let valorHora = parseFloat(e.vh) || 0;
+        let horasPorDia = parseFloat(e.h) || 0; 
         
-        // Asegurate de tener un elemento con este ID en tu HTML
-        const cont = document.getElementById('contador-liq');
-        if(cont) cont.innerText = `Total profesionales: ${lista.length}`;
+        // Cálculo del tope mensual en base al esquema del legajo
+        let esquemaLimpio = (e.esquema || "").trim();
+        let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
+        const topeHorasMensuales = diasPorSemana * 4 * horasPorDia;
 
-        document.getElementById('b-liq').innerHTML = lista.map(e => {
-            // Acceso unificado a datos de asistencia
-            const asistE = centroLiqActivo === "TODOS" 
-                ? (snapshotData[e.c] ? snapshotData[e.c][e.id] : {}) 
-                : (snapshotData[e.id] || {});
+        let horasDePresenciaEfectiva = 0;
+        let contadorTardanzas = 0;
+
+        // Recorremos los días del mes
+        for (let d = 1; d <= diasEnMes; d++) {
+            let reg = asistE[d];
+            if (!reg) continue;
+
+            let esPresencia = false;
+            let horasDeHoy = horasPorDia;
+            const valorTexto = reg.toString().toUpperCase();
             
-            let valorHora = parseFloat(e.vh) || 0;
-            let horasPorDia = parseFloat(e.h) || 0; 
-            
-            // Cálculo del tope mensual (solo para horas base)
-            let esquemaLimpio = (e.esquema || "").trim();
-            let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
-            const topeHorasMensuales = diasPorSemana * 4 * horasPorDia;
+            if (typeof reg === 'object' || valorTexto.startsWith('P') || valorTexto.startsWith('AC') || valorTexto.startsWith('F') || valorTexto.startsWith('T')) {
+                esPresencia = true;
 
-            let horasDePresenciaEfectiva = 0;
-            let contadorTardanzas = 0;
-
-            for (let d = 1; d <= diasEnMes; d++) {
-                let reg = asistE[d];
-                if (!reg) continue;
-
-                let esPresencia = false;
-                let horasDeHoy = horasPorDia;
-                const valorTexto = reg.toString().toUpperCase();
-                
-                if (typeof reg === 'object' || valorTexto.startsWith('P') || valorTexto.startsWith('AC') || valorTexto.startsWith('F') || valorTexto.startsWith('T')) {
-                    esPresencia = true;
-
-                    if (typeof reg === 'object') {
-                        if (reg.in && e.hIngreso) {
-                            let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
-                            if (difIn > 15 && difIn <= 60) {
-                                contadorTardanzas++;
-                                if (contadorTardanzas >= 3) { esPresencia = false; contadorTardanzas = 0; }
-                            } else if (difIn > 60) {
-                                horasDeHoy -= Math.floor(difIn / 60);
-                            }
+                if (typeof reg === 'object') {
+                    if (reg.in && e.hIngreso) {
+                        let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
+                        if (difIn > 15 && difIn <= 60) {
+                            contadorTardanzas++;
+                            if (contadorTardanzas >= 3) { esPresencia = false; contadorTardanzas = 0; }
+                        } else if (difIn > 60) {
+                            horasDeHoy -= Math.floor(difIn / 60);
                         }
-                        if (reg.out && e.hEgreso) {
-                            let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
-                            if (difOut > 15) {
-                                let horasAntes = Math.floor(difOut / 60);
-                                if (horasAntes > 0) horasDeHoy -= horasAntes;
-                            }
+                    }
+                    if (reg.out && e.hEgreso) {
+                        let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
+                        if (difOut > 15) {
+                            let horasAntes = Math.floor(difOut / 60);
+                            if (horasAntes > 0) horasDeHoy -= horasAntes;
                         }
                     }
                 }
-
-                if (esPresencia) {
-                    horasDePresenciaEfectiva += Math.max(0, horasDeHoy);
-                }
             }
 
-            // --- LÓGICA CORREGIDA ---
-            // 1. Horas base no pueden superar el tope del esquema
-            let horasBase = Math.min(horasDePresenciaEfectiva, topeHorasMensuales);
-            
-            // 2. Extras van aparte y no tienen tope ni restan
-            let extras = parseFloat(asistE['EXT']) || 0;
-            
-            // 3. Total final
-            let htFinal = horasBase + extras;
-            let totalCalc = Math.round(htFinal * valorHora);
-            
-            let pagado = false;
-            try {
-                if (todoElAnio[m]) {
-                    pagado = (todoElAnio[m][e.c] && todoElAnio[m][e.c][e.id] !== undefined) 
-                             ? todoElAnio[m][e.c][e.id] 
-                             : (todoElAnio[m][e.id] || false);
-                }
-            } catch (err) { console.error("Error al comprobar pago:", e.n, err); }
+            if (esPresencia) {
+                horasDePresenciaEfectiva += Math.max(0, horasDeHoy);
+            }
+        }
 
-            return generarFilaLiq(e, htFinal.toFixed(1), totalCalc, pagado, valorHora, false, todoElAnio, m);
-        }).join('');
-    });
+        // --- PROCESAMIENTO MATEMÁTICO TRANSPARENTE ---
+        // Las horas base se limitan al tope estricto de su esquema
+        let horasBase = Math.min(horasDePresenciaEfectiva, topeHorasMensuales);
+        
+        // Las extras se leen directamente desde la propiedad 'EXT' de la asistencia
+        let extras = parseFloat(asistE['EXT']) || 0;
+        
+        // Suma limpia: Base + Extras (Garantiza que figuren en las Horas Totales)
+        let htFinal = horasBase + extras;
+        
+        // Multiplicación directa por el valor hora establecido en el legajo
+        let totalCalc = Math.round(htFinal * valorHora);
+        
+        // Verificación del estado de pago de la factura
+        let pagado = false;
+        try {
+            if (todoElAnio[m]) {
+                pagado = (todoElAnio[m][e.c] && todoElAnio[m][e.c][e.id] !== undefined) 
+                         ? todoElAnio[m][e.c][e.id] 
+                         : (todoElAnio[m][e.id] || false);
+            }
+        } catch (err) { console.error("Error al comprobar pago:", e.n, err); }
+
+        // Retornamos la fila armada pasando las horas totales definitivas (htFinal) y el monto total (totalCalc)
+        return generarFilaLiq(e, htFinal.toFixed(1), totalCalc, pagado, valorHora, false, todoElAnio, m);
+    }).join('');
 }
 function generarFilaLiq(e, hs, tot, pagado, vh, congelado, todoElAnio, mesAct) {
     let mesesDeuda = [];
