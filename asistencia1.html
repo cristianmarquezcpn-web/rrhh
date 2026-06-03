@@ -759,7 +759,7 @@ function generarFilaLiq(e, hs, tot, pagado, vh, congelado, todoElAnio, mesAct) {
         <td>$${vh}</td>
         <td style="font-weight:bold; color:var(--cobalto)">$${tot.toLocaleString()}</td>
         <td style="cursor:pointer;" onclick="toggleFactura('${e.id}')">${pagado ? '🟢' : '🔴'}</td>
-        <td><button class="btn btn-primary" onclick="enviarMail('${e.m}', '${e.n}', '${hs}', '${tot}', '${e.cbu}', '${deudaStr}')">✉️</button></td>
+        <td><button class="btn btn-primary" onclick="enviarMail('${e.m}', '${e.n}', '${hs}', '${tot}', '${e.cbu || ''}', '${deudaStr}', '${periodoActual}', '${centroActual}')">✉️</button></td>
     </tr>`;
 }
 function forzarNumero(texto) {
