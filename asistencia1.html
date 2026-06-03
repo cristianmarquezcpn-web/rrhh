@@ -1068,94 +1068,89 @@ function imprimirPlanillaAsistencia() {
         setTimeout(() => { ventana.print(); }, 1500);
     });
 }
-async function congelarMesActual(c, a, m, snapshotData) {
-    console.log("--- INICIO CONGELADO ---");
-    console.log(`Parámetros: Centro=${c}, Año=${a}, Mes=${m}`);
+async function congelarMesActual() {
+    const m = parseInt(mS.value);
+    const a = parseInt(aS.value);
+    const c = centroLiqActivo;
     
-    let fotos = {};
-    const diasEnMes = new Date(a, m + 1, 0).getDate();
+    if (c === "TODOS") return alert("Seleccioná una sede específica para congelar.");
     
-    const lista = empleados.filter(e => 
-        (c === "TODOS" || e.c === c) && !e.fechaBaja
-    );
-
-    console.log(`Empleados a procesar: ${lista.length}`);
-
-    lista.forEach(e => {
-        const asistE = c === "TODOS" ? (snapshotData[e.c] ? snapshotData[e.c][e.id] : {}) : (snapshotData[e.id] || {});
+    if (confirm(`¿Confirmás congelar la liquidación de ${meses[m]} ${a} para ${c}?`)) {
         
-        let valorHora = parseFloat(e.vh) || 0;
-        let horasPorDia = parseFloat(e.h) || 0; 
+        // 1. Obtenemos datos de asistencia
+        const snapAsist = await dbAsistencia.child(`${a}/${m}/${c}`).once('value');
+        const dataRaw = snapAsist.val() || {};
+        const diasEnMes = new Date(a, m + 1, 0).getDate();
         
-        let esquemaLimpio = (e.esquema || "").trim();
-        let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
-        const topeHorasMensuales = diasPorSemana * 4 * horasPorDia;
+        const fotos = {};
+        const lista = empleados.filter(e => e.c === c && !e.fechaBaja);
 
-        let horasDePresenciaEfectiva = 0;
-        let contadorTardanzas = 0;
+        lista.forEach(e => {
+            const asistE = dataRaw[e.id] || {};
+            
+            // --- LOGICA MATEMATICA EXACTA DE RENDERLIQ ---
+            let valorHora = parseFloat(e.vh) || 0;
+            let horasPorDia = parseFloat(e.h) || 0; 
+            
+            let esquemaLimpio = (e.esquema || "").trim();
+            let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
+            const topeHorasMensuales = diasPorSemana * 4 * horasPorDia;
 
-        for (let d = 1; d <= diasEnMes; d++) {
-            let reg = asistE[d];
-            if (!reg) continue;
+            let horasDePresenciaEfectiva = topeHorasMensuales;
+            let contadorTardanzas = 0;
 
-            let esPresencia = false;
-            let horasDeHoy = horasPorDia;
-            const valorTexto = reg.toString().toUpperCase();
+            for (let d = 1; d <= diasEnMes; d++) {
+                let reg = asistE[d];
+                if (!reg) continue;
 
-            if (typeof reg === 'object' || valorTexto.startsWith('P') || valorTexto.startsWith('AC') || valorTexto.startsWith('F') || valorTexto.startsWith('T')) {
-                esPresencia = true;
+                const valorTexto = reg.toString().toUpperCase();
 
-                if (typeof reg === 'object') {
-                    if (reg.in && e.hIngreso) {
-                        let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
-                        if (difIn > 15 && difIn <= 60) {
-                            contadorTardanzas++;
-                            if (contadorTardanzas >= 3) { esPresencia = false; contadorTardanzas = 0; }
-                        } else if (difIn > 60) {
-                            horasDeHoy -= Math.floor(difIn / 60);
+                if (valorTexto === 'A') {
+                    horasDePresenciaEfectiva -= horasPorDia;
+                } else if (typeof reg === 'object' || ['P', 'AC', 'F', 'T'].includes(valorTexto)) {
+                    if (typeof reg === 'object') {
+                        if (reg.in && e.hIngreso) {
+                            let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
+                            if (difIn > 15 && difIn <= 60) {
+                                contadorTardanzas++;
+                                if (contadorTardanzas >= 3) { horasDePresenciaEfectiva -= horasPorDia; contadorTardanzas = 0; }
+                            } else if (difIn > 60) {
+                                horasDePresenciaEfectiva -= Math.floor(difIn / 60);
+                            }
                         }
-                    }
-                    if (reg.out && e.hEgreso) {
-                        let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
-                        if (difOut > 15) {
-                            let horasAntes = Math.floor(difOut / 60);
-                            if (horasAntes > 0) horasDeHoy -= horasAntes;
+                        if (reg.out && e.hEgreso) {
+                            let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
+                            if (difOut > 15) {
+                                let horasAntes = Math.floor(difOut / 60);
+                                if (horasAntes > 0) horasDePresenciaEfectiva -= horasAntes;
+                            }
                         }
                     }
                 }
             }
 
-            if (esPresencia) {
-                horasDePresenciaEfectiva += Math.max(0, horasDeHoy);
-            }
-        }
+            let horasBase = Math.max(0, horasDePresenciaEfectiva);
+            let extras = parseFloat(asistE['EXT']) || 0;
+            let htFinal = horasBase + extras;
+            
+            // 2. GUARDAMOS EL RESULTADO DEL CALCULO UNIFICADO
+            fotos[e.id] = {
+                nombre: e.n,
+                hs: htFinal,
+                vh: valorHora,
+                extras: extras,
+                total: Math.round(htFinal * valorHora)
+            };
+        });
 
-        let horasBase = Math.min(horasDePresenciaEfectiva, topeHorasMensuales);
-        let extras = parseFloat(asistE['EXT']) || 0;
-        let htFinal = horasBase + extras;
-        
-        fotos[e.id] = {
-            nombre: e.n,
-            hs: htFinal, 
-            vh: valorHora, 
-            extras: extras,
-            total: Math.round(htFinal * valorHora)
-        };
-    });
-
-    console.log("Objeto final a guardar en Firebase:", fotos);
-
-    // Guardado mediante la ruta absoluta para evitar errores de referencia de variable
-    firebase.database().ref(`SISTEMA_PERSONAL/liquidacionescongeladas/${c}/${a}/${m}`).set(fotos)
-    .then(() => {
-        console.log("✅ Guardado en Firebase exitoso.");
-        alert("Liquidación congelada correctamente en la ruta correcta.");
-        renderLiq();
-    })
-    .catch(err => {
-        console.error("❌ Error al guardar:", err);
-        alert("Error al guardar: " + err.message);
-    });
+        // 3. GUARDAMOS EN LA RUTA ORIGINAL (Sin alterar la estructura)
+        baseDb.child(`liquidacionescongeladas/${c}/${a}/${m}`).set(fotos)
+        .then(() => {
+            alert("Liquidación congelada correctamente.");
+            renderLiq();
+        })
+        .catch(err => alert("Error al guardar: " + err.message));
+    }
 }
 function obtenerHorasEsquema(e, d, m, a) {
     // CAMBIO CLAVE: En tu Firebase se llama 'e' (ej: "1,2,3,4,5")
