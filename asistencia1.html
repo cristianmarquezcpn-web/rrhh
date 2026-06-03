@@ -647,15 +647,13 @@ async function renderLiq() {
         (centroLiqActivo === "TODOS" || e.c === centroLiqActivo) && !e.fechaBaja
     );
     
-    // 5. CONTROL DEL CONTADOR: Actualización del elemento en el HTML
+    // 5. CONTROL DEL CONTADOR
     const cont = document.getElementById('contador-liq');
     if (cont) {
         cont.innerText = `Total profesionales: ${lista.length}`;
-    } else {
-        console.warn("Falta crear el elemento con id='contador-liq' en tu HTML.");
     }
 
-    // 6. Procesamos y renderizamos los datos de forma síncrona y segura
+    // 6. Procesamos y renderizamos
     document.getElementById('b-liq').innerHTML = lista.map(e => {
         let asistE = {};
         if (centroLiqActivo === "TODOS") {
@@ -674,47 +672,44 @@ async function renderLiq() {
         let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
         const topeHorasMensuales = diasPorSemana * 4 * horasPorDia;
 
-        // LÓGICA DE TOPE ESTRICTO: Partimos del tope y descontamos faltas
         let horasDePresenciaEfectiva = topeHorasMensuales;
         let contadorTardanzas = 0;
 
         for (let d = 1; d <= diasEnMes; d++) {
             let reg = asistE[d];
             
-            // Si el día está vacío, restamos la jornada completa
-            if (!reg) {
-                horasDePresenciaEfectiva -= horasPorDia;
-                continue;
-            }
+            // Si el día está vacío, NO hacemos nada (no es falta)
+            if (!reg) continue;
 
             const valorTexto = reg.toString().toUpperCase();
-            const esPago = ['P', 'AC', 'F', 'T'].includes(valorTexto) || typeof reg === 'object';
-
-            if (!esPago) {
-                // Es falta real (ej: 'A'), descontamos jornada
+            
+            // Si es 'A', descontamos jornada
+            if (valorTexto === 'A') {
                 horasDePresenciaEfectiva -= horasPorDia;
-            } else if (typeof reg === 'object') {
-                // Gestión de tardanzas en registros complejos
-                if (reg.in && e.hIngreso) {
-                    let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
-                    if (difIn > 15 && difIn <= 60) {
-                        contadorTardanzas++;
-                        if (contadorTardanzas >= 3) { horasDePresenciaEfectiva -= horasPorDia; contadorTardanzas = 0; }
-                    } else if (difIn > 60) {
-                        horasDePresenciaEfectiva -= Math.floor(difIn / 60);
+            } 
+            // Si es presencia paga, evaluamos tardanzas
+            else if (typeof reg === 'object' || ['P', 'AC', 'F', 'T'].includes(valorTexto)) {
+                if (typeof reg === 'object') {
+                    if (reg.in && e.hIngreso) {
+                        let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
+                        if (difIn > 15 && difIn <= 60) {
+                            contadorTardanzas++;
+                            if (contadorTardanzas >= 3) { horasDePresenciaEfectiva -= horasPorDia; contadorTardanzas = 0; }
+                        } else if (difIn > 60) {
+                            horasDePresenciaEfectiva -= Math.floor(difIn / 60);
+                        }
                     }
-                }
-                if (reg.out && e.hEgreso) {
-                    let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
-                    if (difOut > 15) {
-                        let horasAntes = Math.floor(difOut / 60);
-                        if (horasAntes > 0) horasDePresenciaEfectiva -= horasAntes;
+                    if (reg.out && e.hEgreso) {
+                        let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
+                        if (difOut > 15) {
+                            let horasAntes = Math.floor(difOut / 60);
+                            if (horasAntes > 0) horasDePresenciaEfectiva -= horasAntes;
+                        }
                     }
                 }
             }
         }
 
-        // --- PROCESAMIENTO MATEMÁTICO ---
         let horasBase = Math.max(0, horasDePresenciaEfectiva);
         let extras = parseFloat(asistE['EXT']) || 0;
         let htFinal = horasBase + extras;
