@@ -746,21 +746,28 @@ function generarFilaLiq(e, hs, tot, pagado, vh, congelado, todoElAnio, mesAct) {
         }
     }
     const deudaStr = mesesDeuda.join(', ');
-    
-    // Creamos una etiqueta pequeña si hay deuda
     const badgeDeuda = deudaStr ? `<br><span style="color:red; font-size:10px;">Debe: ${deudaStr}</span>` : "";
 
-    return `<tr>
-        <td>
-            <b>${e.n}</b> ${congelado ? '🔒' : ''}
-            ${badgeDeuda} </td>
+    // Definimos los valores primero
+    const periodoVal = meses[mesAct] + " " + aS.value;
+    const centroVal = e.c;
+
+    // Construimos la fila
+    let fila = `<tr>
+        <td><b>${e.n}</b> ${congelado ? '🔒' : ''} ${badgeDeuda} </td>
         <td><small>${e.cuit || '-'}</small></td>
         <td><b>${hs}</b> hs</td>
         <td>$${vh}</td>
         <td style="font-weight:bold; color:var(--cobalto)">$${tot.toLocaleString()}</td>
         <td style="cursor:pointer;" onclick="toggleFactura('${e.id}')">${pagado ? '🟢' : '🔴'}</td>
-        <td><button class="btn btn-primary" onclick="enviarMail('${e.m}', '${e.n}', '${hs}', '${tot}', '${e.cbu || ''}', '${deudaStr}', '${periodoActual}', '${centroActual}')">✉️</button></td>
-    </tr>`;
+        <td>`;
+    
+    // Agregamos el botón de forma separada para evitar el error de comillas
+    fila += `<button class="btn btn-primary" onclick="enviarMail('${e.m}', '${e.n}', '${hs}', '${tot}', '${e.cbu || ''}', '${deudaStr}', '${periodoVal}', '${centroVal}')">✉️</button>`;
+    
+    fila += `</td></tr>`;
+    
+    return fila;
 }
 function forzarNumero(texto) {
     if (!texto) return 0;
