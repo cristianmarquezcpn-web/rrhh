@@ -880,14 +880,19 @@ async function validarMasivo(ev) {
         const ref = baseDb.child(`facturas_estado/${a}/${m}/${emp.c}/${id}`);
         ref.once('value', snap => { if(snap.exists()) ref.remove(); else ref.set(true); renderLiq(); });
     }
-function enviarMail(mail, nom, hs, tot, cbu, deuda) {
-    const sub = encodeURIComponent("Liquidación Esencial Salud");
+function enviarMail(mail, nom, hs, tot, cbu, deuda, periodo, centro) {
+    // Limpiamos el centro por si viene con guiones bajos (ej: CET_TARDE -> CET TARDE)
+    const centroLimpio = String(centro).replace(/_/g, ' ').toUpperCase();
+
+    // Armamos el ASUNTO usando el término correcto: Centro
+    const sub = encodeURIComponent(`Liquidación Esencial Salud - ${periodo} (${centroLimpio})`);
     
     // Limpiamos el total por si viene con el signo $ o puntos de miles
     let totalLimpio = String(tot).replace(/[^0-9]/g, '');
     let totalFormateado = parseInt(totalLimpio).toLocaleString('es-AR');
 
-    const mensaje = `Hola ${nom},\n\nTe envío el detalle de tu liquidación:\n\n- Horas: ${hs}\n- Total a facturar: $${totalFormateado}\n- CBU: ${cbu}${deuda ? '\n\n⚠️ IMPORTANTE: Debes facturas de: ' + deuda : ''}\n\nPor favor, enviá la factura para procesar el pago.\n\nSaludos!`;
+    // Redactamos el mensaje usando "centro"
+    const mensaje = `Hola ${nom},\n\nTe envío el detalle de tu liquidación correspondiente al período ${periodo} en el centro ${centroLimpio}:\n\n- Horas liquidadas: ${hs}\n- Total a facturar: $${totalFormateado}\n- CBU registrado: ${cbu}${deuda ? '\n\n⚠️ IMPORTANTE: Debes facturas de: ' + deuda : ''}\n\nPor favor, enviá la factura correspondiente para poder procesar el pago.\n\nSaludos!`;
 
     const body = encodeURIComponent(mensaje);
     
