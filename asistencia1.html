@@ -628,7 +628,7 @@ function renderLiqBtns() {
 async function renderLiq() {
     const m = parseInt(mS.value), a = parseInt(aS.value);
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-    
+    dbAsistencia.off();
     // 1. Traemos el estado de las facturas una sola vez
     const fSnap = await baseDb.child(`facturas_estado/${a}`).once('value');
     const todoElAnio = fSnap.val() || {};
@@ -710,19 +710,11 @@ async function renderLiq() {
         }
 
         // --- PROCESAMIENTO MATEMÁTICO TRANSPARENTE ---
-        // Las horas base se limitan al tope estricto de su esquema
         let horasBase = Math.min(horasDePresenciaEfectiva, topeHorasMensuales);
-        
-        // Las extras se leen directamente desde la propiedad 'EXT' de la asistencia
         let extras = parseFloat(asistE['EXT']) || 0;
-        
-        // Suma limpia: Base + Extras (Garantiza que figuren en las Horas Totales)
         let htFinal = horasBase + extras;
-        
-        // Multiplicación directa por el valor hora establecido en el legajo
         let totalCalc = Math.round(htFinal * valorHora);
         
-        // Verificación del estado de pago de la factura
         let pagado = false;
         try {
             if (todoElAnio[m]) {
@@ -732,8 +724,12 @@ async function renderLiq() {
             }
         } catch (err) { console.error("Error al comprobar pago:", e.n, err); }
 
-        // Retornamos la fila armada pasando las horas totales definitivas (htFinal) y el monto total (totalCalc)
-        return generarFilaLiq(e, htFinal.toFixed(1), totalCalc, pagado, valorHora, false, todoElAnio, m);
+        // 🔥 MODIFICACIÓN AQUÍ: Creamos la cadena discriminada
+        // En la celda se leerá, por ejemplo: "80.0 + 5.0 (85.0)"
+        let horasDiscriminadas = `${horasBase.toFixed(1)} + ${extras.toFixed(1)} (${htFinal.toFixed(1)})`;
+
+        // Pasamos 'horasDiscriminadas' en lugar de 'htFinal.toFixed(1)'
+        return generarFilaLiq(e, horasDiscriminadas, totalCalc, pagado, valorHora, false, todoElAnio, m);
     }).join('');
 }
 function generarFilaLiq(e, hs, tot, pagado, vh, congelado, todoElAnio, mesAct) {
@@ -1066,7 +1062,7 @@ function imprimirPlanillaAsistencia() {
         setTimeout(() => { ventana.print(); }, 1500);
     });
 }
-async function congelarLiquidacionActual(c, a, m, snapshotData) {
+async function congelarmesActual(c, a, m, snapshotData) {
     let fotos = {};
     const diasEnMes = new Date(a, m + 1, 0).getDate();
     const lista = empleados.filter(e => 
