@@ -500,47 +500,44 @@ function renderAsist() {
 
     dbAsistencia.child(`${a}/${m}/${c}`).on('value', snap => {
         const dataRaw = snap.val() || {};
-        document.getElementById('b-asist').innerHTML = empleados.filter(e => e.c === c).map(e => {
+        
+        // FILTRO DE BAJAS Y CENTRO
+        document.getElementById('b-asist').innerHTML = empleados.filter(e => {
+            const fechaEgreso = e.fEgreso ? new Date(e.fEgreso) : null;
+            const tieneBaja = fechaEgreso && fechaEgreso < new Date(a, m, 1);
+            return e.c === c && !tieneBaja;
+        }).map(e => {
             let row = `<td class="col-nombre"><b>${e.n}</b></td>`;
             const dataE = dataRaw[e.id] || {};
             const esc = e.esquema || "";
 
             for (let d = 1; d <= totalMes; d++) {
                 let fC = new Date(a, m, d), dL = dSemana[fC.getDay()], fI = new Date((e.fIngreso || "2000-01-01") + "T00:00:00");
-                let bloq = (fC.getDay() === 0) || (fC < fI) || (esc !== "" && !esc.includes(dL));
+                
+                // Lógica de bloqueo: Domingo, antes de ingreso, después de egreso, o fuera de esquema
+                let bloq = (fC.getDay() === 0) || (fC < fI) || (e.fEgreso && fC > new Date(e.fEgreso)) || (esc !== "" && !esc.includes(dL));
 
                 let v = dataE[d] || "";
                 let hIn = "--", hOut = "--", valorFinal = "";
                 let bgEstilo = ""; 
 
-                // --- DETECCIÓN ROBUSTA DE FIRMA (OBJETO) ---
                 if (v !== null && typeof v === 'object') {
                     valorFinal = v.val || "P";
                     hIn = v.in || "--"; 
                     hOut = v.out || "--";
-                    
-                    // Color base por defecto (Verde)
                     bgEstilo = "background-color: #2ecc71; color: white;"; 
-                    
-                    // Validar tardanza (Amarillo) - SIEMPRE se evalúa al cargar
                     if (hIn !== "--" && e.hIngreso) {
                         let minsTarde = calcularDiferenciaMinutos(e.hIngreso, hIn);
-                        if (minsTarde > 15) {
-                            bgEstilo = "background-color: #f1c40f; color: #333;"; 
-                        }
+                        if (minsTarde > 15) bgEstilo = "background-color: #f1c40f; color: #333;"; 
                     }
-                } 
-                // --- DETECCIÓN DE TEXTO MANUAL (P, F, AC) ---
-                else {
+                } else {
                     valorFinal = v;
                     let vL = valorFinal.toString().toLowerCase();
                     if (vL === 'p') bgEstilo = "background-color: #2ecc71; color: white;";
                     else if (vL === 'f') bgEstilo = "background-color: #9b59b6; color: white;";
                     else if (vL === 'ac') bgEstilo = "background-color: #3498db; color: white;";
-		    else if (vL === 'a') bgEstilo = "background-color: #e74c3c; color: white;"; // ROJO (Agregado)
-                    else if (valorFinal === "" && !bloq && fC < hoy) {
-                        bgEstilo = "background-color: #ffcccc; color: #c0392b;"; 
-                    }
+                    else if (vL === 'a') bgEstilo = "background-color: #e74c3c; color: white;";
+                    else if (valorFinal === "" && !bloq && fC < hoy) bgEstilo = "background-color: #ffcccc; color: #c0392b;"; 
                 }
 
                 row += `<td>
@@ -629,90 +626,85 @@ async function renderLiq() {
     const m = parseInt(mS.value), a = parseInt(aS.value);
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
     dbAsistencia.off();
-    
-    // 1. Traemos el estado de las facturas una sola vez
+
     const fSnap = await baseDb.child(`facturas_estado/${a}`).once('value');
     const todoElAnio = fSnap.val() || {};
-    
-    // 2. Definimos la ruta de consulta según el centro activo
     const ruta = centroLiqActivo === "TODOS" ? `${a}/${m}` : `${a}/${m}/${centroLiqActivo}`;
     
-    // 3. Usamos .once() para destruir las escuchas viejas y evitar que se mezcle la información
     const snapshot = await dbAsistencia.child(ruta).once('value');
     const snapshotData = snapshot.val() || {}; 
     const diasEnMes = new Date(a, m + 1, 0).getDate();
-    
-    // 4. Filtramos la lista de profesionales en base al centro seleccionado
-    const lista = empleados.filter(e => 
-        (centroLiqActivo === "TODOS" || e.c === centroLiqActivo) && !e.fechaBaja
-    );
-    
-    // 5. CONTROL DEL CONTADOR
-    const cont = document.getElementById('contador-liq');
-    if (cont) {
-        cont.innerText = `Total profesionales: ${lista.length}`;
+
+    // FILTRO DE BAJAS Y CENTRO
+    const lista = empleados.filter(e => {
+        const tieneBaja = e.fEgreso && new Date(e.fEgreso) < new Date(a, m, 1);
+        const esDelCentro = (centroLiqActivo === "TODOS" || e.c === centroLiqActivo);
+        return esDelCentro && !tieneBaja;
+    });
+
+    if (document.getElementById('contador-liq')) {
+        document.getElementById('contador-liq').innerText = `Total profesionales: ${lista.length}`;
     }
 
-    // 6. Procesamos y renderizamos
     document.getElementById('b-liq').innerHTML = lista.map(e => {
         let asistE = {};
         if (centroLiqActivo === "TODOS") {
             const sedeKey = Object.keys(snapshotData).find(k => k.trim().toUpperCase() === (e.c || "").trim().toUpperCase());
-            if (sedeKey && snapshotData[sedeKey] && snapshotData[sedeKey][e.id]) {
-                asistE = snapshotData[sedeKey][e.id];
-            }
+            if (sedeKey && snapshotData[sedeKey] && snapshotData[sedeKey][e.id]) asistE = snapshotData[sedeKey][e.id];
         } else {
             asistE = snapshotData[e.id] || {};
         }
-        
-        let valorHora = parseFloat(e.vh) || 0;
-        let horasPorDia = parseFloat(e.h) || 0; 
-        
-        let esquemaLimpio = (e.esquema || "").trim();
-        let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
-        const topeHorasMensuales = diasPorSemana * 4 * horasPorDia;
 
-        let horasDePresenciaEfectiva = topeHorasMensuales;
+        let valorHora = parseFloat(e.vh) || 0;
+        let horasPorDia = parseFloat(e.h) || 0;
+        
+        let horasAcumuladas = 0;
         let contadorTardanzas = 0;
+        const fIngreso = new Date((e.fIngreso || "2000-01-01") + "T00:00:00");
 
         for (let d = 1; d <= diasEnMes; d++) {
+            let fechaActual = new Date(a, m, d);
+            if (fechaActual < fIngreso) continue;
+            if (e.fEgreso && fechaActual > new Date(e.fEgreso)) continue;
+
             let reg = asistE[d];
-            
-            // Si el día está vacío, NO hacemos nada (no es falta)
             if (!reg) continue;
 
-            const valorTexto = reg.toString().toUpperCase();
-            
-            // Si es 'A', descontamos jornada
-            if (valorTexto === 'A') {
-                horasDePresenciaEfectiva -= horasPorDia;
-            } 
-            // Si es presencia paga, evaluamos tardanzas
-            else if (typeof reg === 'object' || ['P', 'AC', 'F', 'T'].includes(valorTexto)) {
-                if (typeof reg === 'object') {
-                    if (reg.in && e.hIngreso) {
-                        let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
-                        if (difIn > 15 && difIn <= 60) {
-                            contadorTardanzas++;
-                            if (contadorTardanzas >= 3) { horasDePresenciaEfectiva -= horasPorDia; contadorTardanzas = 0; }
-                        } else if (difIn > 60) {
-                            horasDePresenciaEfectiva -= Math.floor(difIn / 60);
-                        }
+            let valor = typeof reg === 'object' ? (reg.val || "") : reg.toString();
+            let vL = valor.toUpperCase();
+
+            if (['P', 'AC', 'F'].includes(vL)) {
+                horasAcumuladas += horasPorDia;
+            }
+
+            if (typeof reg === 'object') {
+                if (reg.in && e.hIngreso) {
+                    let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
+                    if (difIn > 15 && difIn <= 60) {
+                        contadorTardanzas++;
+                        if (contadorTardanzas >= 3) { horasAcumuladas -= horasPorDia; contadorTardanzas = 0; }
+                    } else if (difIn > 60) {
+                        horasAcumuladas -= Math.floor(difIn / 60);
                     }
-                    if (reg.out && e.hEgreso) {
-                        let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
-                        if (difOut > 15) {
-                            let horasAntes = Math.floor(difOut / 60);
-                            if (horasAntes > 0) horasDePresenciaEfectiva -= horasAntes;
-                        }
+                }
+                if (reg.out && e.hEgreso) {
+                    let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
+                    if (difOut > 15) {
+                        horasAcumuladas -= Math.floor(difOut / 60);
                     }
                 }
             }
         }
 
-        let horasBase = Math.max(0, horasDePresenciaEfectiva);
+        let horasBase = Math.max(0, horasAcumuladas);
         let extras = parseFloat(asistE['EXT']) || 0;
         let htFinal = horasBase + extras;
+        
+        let esquemaLimpio = (e.esquema || "").trim();
+        let diasPorSemana = esquemaLimpio.split(',').length; 
+        let totalTeorico = diasPorSemana * 4 * horasPorDia; 
+        
+        let horasDiscriminadas = `<b>${htFinal.toFixed(1)}</b> <small>(${totalTeorico.toFixed(1)})</small>`;
         let totalCalc = Math.round(htFinal * valorHora);
         
         let pagado = false;
@@ -723,8 +715,6 @@ async function renderLiq() {
                          : (todoElAnio[m][e.id] || false);
             }
         } catch (err) { console.error("Error al comprobar pago:", e.n, err); }
-
-        let horasDiscriminadas = `${horasBase.toFixed(1)} + ${extras.toFixed(1)} (${htFinal.toFixed(1)})`;
 
         return generarFilaLiq(e, horasDiscriminadas, totalCalc, pagado, valorHora, false, todoElAnio, m);
     }).join('');
