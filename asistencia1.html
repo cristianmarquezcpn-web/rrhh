@@ -721,7 +721,7 @@ async function renderLiq() {
         let extras = parseFloat(asistE['EXT']) || 0;
         let htFinal = horasRealesTrabajadas + extras;
         
-        let horasDiscriminadas = `<b>${htFinal.toFixed(1)}</b> <small>(${totalTeorico.toFixed(1)})</small>`;
+        let horasDiscriminadas = `<b>${htFinal.toFixed(1)}</b> <small>(Base:${horasRealesTrabajadas.toFixed(1)} + Ext:${extras.toFixed(1)} / Total:${totalTeorico.toFixed(1)})</small>`;
         let totalCalc = Math.round(htFinal * valorHora);
         
         let pagado = false;
@@ -1346,11 +1346,9 @@ async function abrirLegajo(idEmpleado) {
     if (!empActual) return alert("Profesional no encontrado");
 
     const c = empActual.c;
-    // Respetamos el índice del mes según mS.value (0-11) para que coincida con renderLiq
     const mesAct = parseInt(mS.value) >= 0 ? parseInt(mS.value) : new Date().getMonth();
     const anioActual = parseInt(aS.value) || 2026;
 
-    // 1. OBTENCIÓN DE DATOS (Sumamos facturas_estado para todo el año)
     const [snapLiq, snapAsist, snapFactAnio] = await Promise.all([
         baseDb.child(`liquidacionescongeladas`).once('value'),
         dbAsistencia.child(`${anioActual}/${mesAct}/${c}/${empActual.id}`).once('value'),
@@ -1361,7 +1359,6 @@ async function abrirLegajo(idEmpleado) {
     const dataAsist = snapAsist.val() || {};
     const todoElAnio = snapFactAnio.val() || {};
 
-    // 2. CÁLCULO DE DEUDAS Y FACTURAS
     let mesesDeuda = [];
     for(let i = 0; i < mesAct; i++) {
         let isPagado = false;
@@ -1383,48 +1380,54 @@ async function abrirLegajo(idEmpleado) {
         }
     } catch(e) {}
 
-// 3. CÁLCULO DE MÉTRICAS BÁSICAS Y SUELDO EXACTO
-let p = 0, a = 0, ac = 0, f = 0, totalTardanzas = 0;
+    let p = 0, a = 0, ac = 0, f = 0, totalTardanzas = 0;
+    let valorHora = parseFloat(empActual.vh) || 0;
+    let horasPorDia = parseFloat(empActual.h) || 0;
+    let esquemaLimpio = (empActual.esquema || "").trim();
+    let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
+    let horasComprometidas = (diasPorSemana * 4) * horasPorDia;
 
-for (let d = 1; d <= diasEnMes; d++) {
-    let reg = dataAsist[d];
-    if (!reg) continue;
+    let horasDescontadasPorFaltas = 0;
+    let horasTardanzaDescontadas = 0;
+    let contadorTardanzasLeves = 0; 
+    const diasEnMes = new Date(anioActual, mesAct + 1, 0).getDate();
 
-    // LEER EL VALOR CORRECTAMENTE (Formato antiguo vs. nuevo con .val)
-    let valor = (typeof reg === 'object' && reg !== null) ? (reg.val || "") : reg.toString();
-    let status = valor.toUpperCase();
+    for (let d = 1; d <= diasEnMes; d++) {
+        let reg = dataAsist[d];
+        if (!reg) continue;
 
-    // Conteo UI
-    if (status === 'P') p++;
-    else if (status === 'A') a++;
-    else if (status === 'AC') ac++;
-    else if (status === 'F') f++;
+        // Lógica corregida: lee tanto el valor directo como el objeto con .val
+        let valor = (typeof reg === 'object' && reg !== null) ? (reg.val || "") : reg.toString();
+        let status = valor.toUpperCase();
 
-    // Lógica Descuento Faltas
-    if (status === 'A') horasDescontadasPorFaltas += horasPorDia;
+        if (status === 'P') p++;
+        else if (status === 'A') a++;
+        else if (status === 'AC') ac++;
+        else if (status === 'F') f++;
 
-    // Lógica Tardanzas
-    if (typeof reg === 'object' && reg !== null && reg.in) {
-        let difIn = calcularDiferenciaMinutos(empActual.hIngreso, reg.in);
-        if (difIn > 15) {
-            totalTardanzas++;
-            if (difIn <= 60) {
-                contadorTardanzasLeves++;
-                if (contadorTardanzasLeves === 3) {
-                    horasDescontadasPorFaltas += horasPorDia;
-                    contadorTardanzasLeves = 0;
+        if (status === 'A') horasDescontadasPorFaltas += horasPorDia;
+
+        if (typeof reg === 'object' && reg !== null && reg.in) {
+            let difIn = calcularDiferenciaMinutos(empActual.hIngreso, reg.in);
+            if (difIn > 15) {
+                totalTardanzas++;
+                if (difIn <= 60) {
+                    contadorTardanzasLeves++;
+                    if (contadorTardanzasLeves === 3) {
+                        horasDescontadasPorFaltas += horasPorDia;
+                        contadorTardanzasLeves = 0;
+                    }
+                } else {
+                    horasTardanzaDescontadas += Math.floor(difIn / 60);
                 }
-            } else {
-                horasTardanzaDescontadas += Math.floor(difIn / 60);
             }
         }
     }
-}
 
-let extras = parseFloat(dataAsist['EXT']) || 0;
-let horasFinales = (horasComprometidas - horasDescontadasPorFaltas - horasTardanzaDescontadas) + extras;
-let sueldoEstimado = Math.round(horasFinales * valorHora);
-    // 4. CÁLCULO SALIDA
+    let extras = parseFloat(dataAsist['EXT']) || 0;
+    let horasFinales = (horasComprometidas - horasDescontadasPorFaltas - horasTardanzaDescontadas) + extras;
+    let sueldoEstimado = Math.round(horasFinales * valorHora);
+    
     let hSalida = "--:--";
     if(empActual.hIngreso && empActual.h) {
         let [hh, mm] = empActual.hIngreso.split(':').map(Number);
@@ -1434,7 +1437,6 @@ let sueldoEstimado = Math.round(horasFinales * valorHora);
         hSalida = `${hhS}:${mmS}`;
     }
 
-    // 5. RENDERIZADO DEL MODAL
     document.getElementById('modal-legajo').style.display = 'flex';
     document.getElementById('modal-legajo').innerHTML = `
     <div class="legajo-window" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
@@ -1442,7 +1444,6 @@ let sueldoEstimado = Math.round(horasFinales * valorHora);
             <h2 style="margin:0;">${empActual.n}</h2>
             <button onclick="cerrarLegajo()" style="cursor:pointer;">✕</button>
         </div>
-        
         <div class="legajo-body" style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; padding:20px;">
             <div style="grid-column: span 2; border-bottom:1px solid #ccc; padding-bottom:10px;">
                 <label>Nombre</label><input type="text" id="leg-n" value="${empActual.n || ''}" style="width:100%">
@@ -1455,7 +1456,6 @@ let sueldoEstimado = Math.round(horasFinales * valorHora);
             <div><label>Esquema</label><input type="text" id="leg-esquema" value="${empActual.esquema || 'LMXJV'}" style="width:100%"></div>
             <div><label>F. Ingreso</label><input type="date" id="leg-fIngreso" value="${empActual.fIngreso || ''}" style="width:100%"></div>
             <div><label>F. Egreso</label><input type="date" id="leg-fEgreso" value="${empActual.fEgreso || ''}" style="width:100%"></div>
-            
             <div style="grid-column: span 2; background:#f4f4f4; padding:10px; border-radius:5px;">
                 <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:10px;">
                     <div><label>H. Ingreso</label><input type="time" id="leg-hIngreso" value="${empActual.hIngreso || '08:00'}" style="width:100%"></div>
@@ -1465,26 +1465,24 @@ let sueldoEstimado = Math.round(horasFinales * valorHora);
                     <div style="grid-column: span 4;"><label>Sueldo Base Manual ($)</label><input type="number" id="leg-sueldoBase" value="${empActual.sueldoBase || 0}" style="width:100%"></div>
                 </div>
             </div>
-
             <div style="grid-column: span 2; background:#f9f9f9; padding:10px; border:1px solid #ddd; border-radius:5px;">
                 <label>ESTADÍSTICAS Y SUELDO MES (${meses[mesAct] || mesAct})</label>
                 <div style="font-size:16px; margin-top:5px;">
-   				<span style="color:green; font-weight:bold;">P: ${p}</span> | 
-    			<span style="color:red; font-weight:bold;">A: ${a}</span> | 
-    			<span style="color:blue; font-weight:bold;">AC: ${ac}</span> |
-    			<span style="color:purple; font-weight:bold;">F: ${f}</span>
-				</div>
+                    <span style="color:green; font-weight:bold;">P: ${p}</span> | 
+                    <span style="color:red; font-weight:bold;">A: ${a}</span> | 
+                    <span style="color:blue; font-weight:bold;">AC: ${ac}</span> |
+                    <span style="color:purple; font-weight:bold;">F: ${f}</span>
+                </div>
                 <div style="font-size:15px; margin-top:8px;">
-    			Sueldo Estimado (Neto): <b>$${sueldoEstimado.toLocaleString()}</b>
-    			<br><small style="color:#666;">(Incluye ${parseFloat(dataAsist['EXT'] || 0)} horas extras)</small>
-   				 ( ${pagadoAct ? '<span style="color:green">✅ Pagado</span>' : '<span style="color:orange">🔴 Pendiente</span>'} )
-				</div>
+                    Sueldo Estimado (Neto): <b>$${sueldoEstimado.toLocaleString()}</b>
+                    <br><small style="color:#666;">(Incluye ${parseFloat(dataAsist['EXT'] || 0)} horas extras)</small>
+                    ( ${pagadoAct ? '<span style="color:green">✅ Pagado</span>' : '<span style="color:orange">🔴 Pendiente</span>'} )
+                </div>
                 <div style="font-size:14px; margin-top:5px; color:red;">
                     <b>Deuda meses anteriores:</b> ${deudaStr}
                 </div>
                 <div style="font-size:14px; margin-top:5px;">Tardanzas (>15min): <b>${totalTardanzas}</b></div>
             </div>
-
             <div style="grid-column: span 2;">
                 <h4>💵 Historial Liquidaciones</h4>
                 <div style="max-height:120px; overflow-y:auto; border:1px solid #eee; padding:5px; background:#fff;">
@@ -1492,41 +1490,37 @@ let sueldoEstimado = Math.round(horasFinales * valorHora);
                         Object.keys(liquidaciones[c][anio] || {}).reverse().map(mes => {
                             const datos = liquidaciones[c][anio][mes][empActual.id];
                             if (!datos) return '';
-                            const nombreMes = meses[parseInt(mes)] || mes; // Adaptado según si guardás 0-11 o texto
-                        	return `<div style="border-bottom:1px solid #ddd; padding:6px; font-size:13px;">
-   						   <b>${nombreMes} ${anio}:</b> $${parseFloat(datos.total || 0).toLocaleString()} 
-    					   <br><span style="color:#666;">Hs: ${datos.hs || 0} | Extras: ${datos.extras || 0} | VH: $${datos.vh || 0}</span>
-							</div>`;  
-						}).join('')
+                            const nombreMes = meses[parseInt(mes)] || mes;
+                            return `<div style="border-bottom:1px solid #ddd; padding:6px; font-size:13px;">
+                            <b>${nombreMes} ${anio}:</b> $${parseFloat(datos.total || 0).toLocaleString()} 
+                            <br><span style="color:#666;">Hs: ${datos.hs || 0} | Extras: ${datos.extras || 0} | VH: $${datos.vh || 0}</span>
+                            </div>`;  
+                        }).join('')
                     ).join('') : '<div style="padding:5px;">No hay historial.</div>'}
                 </div>
             </div>
-
-           <div style="grid-column: span 2;">
-   			 <h4>💰 Anticipos</h4>
-    			<div id="historial-anticipos"></div>
-    			<div style="display:flex; gap:5px; margin-top:5px;">
-        		<input type="number" id="pago-parcial-monto" placeholder="$">
-        		<input type="date" id="pago-parcial-fecha">
-        		<button onclick="registrarAnticipo()">+</button>
-    			</div>
-			</div>
-
+            <div style="grid-column: span 2;">
+                <h4>💰 Anticipos</h4>
+                <div id="historial-anticipos"></div>
+                <div style="display:flex; gap:5px; margin-top:5px;">
+                    <input type="number" id="pago-parcial-monto" placeholder="$">
+                    <input type="date" id="pago-parcial-fecha">
+                    <button onclick="registrarAnticipo()">+</button>
+                </div>
+            </div>
             <div style="grid-column: span 2;">
                 <h4>📝 Evaluación y Obs</h4>
                 <select id="leg-puntaje"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
                 <textarea id="leg-eval-comentario" style="width:100%" placeholder="Comentario evaluación">${empActual.evaluacion?.comentario || ''}</textarea>
                 <textarea id="leg-obs" style="width:100%" placeholder="Observaciones">${empActual.observaciones || ''}</textarea>
             </div>
-
             <button onclick="guardarTodoLegajo()" style="grid-column: span 2; padding:15px; background:var(--cobalto); color:white; border:none; border-radius:5px; font-weight:bold;">GUARDAR TODO EL LEGAJO</button>
         </div>
     </div>`;
     
     if(empActual.evaluacion?.puntaje) document.getElementById('leg-puntaje').value = empActual.evaluacion.puntaje;
     document.getElementById('pago-parcial-monto').dataset.sueldo = sueldoEstimado;
-renderHistorialAnticipos(sueldoEstimado);
-	
+    renderHistorialAnticipos(sueldoEstimado);
 }
 function calcularDiferenciaMinutos(hEsperada, hReal) {
     if (!hEsperada || !hReal) return 0;
