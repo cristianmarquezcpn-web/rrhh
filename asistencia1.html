@@ -1385,23 +1385,14 @@ async function abrirLegajo(idEmpleado) {
 
 // 3. CÁLCULO DE MÉTRICAS BÁSICAS Y SUELDO EXACTO
 let p = 0, a = 0, ac = 0, f = 0, totalTardanzas = 0;
-let valorHora = parseFloat(empActual.vh) || 0;
-let horasPorDia = parseFloat(empActual.h) || 0;
-let esquemaLimpio = (empActual.esquema || "").trim();
-let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
-let horasComprometidas = (diasPorSemana * 4) * horasPorDia;
-
-let horasDescontadasPorFaltas = 0;
-let horasTardanzaDescontadas = 0;
-let contadorTardanzasLeves = 0; 
-const diasEnMes = new Date(anioActual, mesAct + 1, 0).getDate();
 
 for (let d = 1; d <= diasEnMes; d++) {
     let reg = dataAsist[d];
     if (!reg) continue;
 
-    let status = (typeof reg === 'object' && reg.status) ? reg.status : reg;
-    status = status.toString().toUpperCase();
+    // LEER EL VALOR CORRECTAMENTE (Formato antiguo vs. nuevo con .val)
+    let valor = (typeof reg === 'object' && reg !== null) ? (reg.val || "") : reg.toString();
+    let status = valor.toUpperCase();
 
     // Conteo UI
     if (status === 'P') p++;
@@ -1413,7 +1404,7 @@ for (let d = 1; d <= diasEnMes; d++) {
     if (status === 'A') horasDescontadasPorFaltas += horasPorDia;
 
     // Lógica Tardanzas
-    if (typeof reg === 'object' && reg.in) {
+    if (typeof reg === 'object' && reg !== null && reg.in) {
         let difIn = calcularDiferenciaMinutos(empActual.hIngreso, reg.in);
         if (difIn > 15) {
             totalTardanzas++;
@@ -1533,7 +1524,9 @@ let sueldoEstimado = Math.round(horasFinales * valorHora);
     </div>`;
     
     if(empActual.evaluacion?.puntaje) document.getElementById('leg-puntaje').value = empActual.evaluacion.puntaje;
-    renderHistorialAnticipos(sueldoEstimado);
+    document.getElementById('pago-parcial-monto').dataset.sueldo = sueldoEstimado;
+renderHistorialAnticipos(sueldoEstimado);
+	
 }
 function calcularDiferenciaMinutos(hEsperada, hReal) {
     if (!hEsperada || !hReal) return 0;
@@ -1569,17 +1562,31 @@ function registrarAnticipo() {
     const container = document.getElementById('historial-anticipos');
     const anticipos = empActual.anticipos || [];
     const totalDado = anticipos.reduce((sum, a) => sum + parseFloat(a.monto), 0);
-    
-    // Usamos el sueldo que nos llegó por parámetro, si no llegó, tomamos 0
     const sueldoNeto = sueldoCalculado || 0;
     const faltante = Math.max(0, sueldoNeto - totalDado);
     
     container.innerHTML = `
         <p>💰 Anticipado: $${totalDado.toLocaleString()} | 📌 Faltante: <b>$${faltante.toLocaleString()}</b></p>
-        ${anticipos.map(a => `<p>${a.fecha}: $${a.monto.toLocaleString()}</p>`).join('')}
+        ${anticipos.map((a, index) => `
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px; background:#fff; padding:2px 5px;">
+                <span>${a.fecha}: $${a.monto}</span>
+                <button onclick="eliminarAnticipo(${index})" style="color:red; cursor:pointer;">Eliminar</button>
+            </div>
+        `).join('')}
     `;
 }
 
+function eliminarAnticipo(index) {
+    if (!confirm("¿Seguro que deseas eliminar este anticipo?")) return;
+    empActual.anticipos.splice(index, 1);
+    
+    // Guardamos en Firebase el array actualizado
+    const idx = empleados.indexOf(empActual);
+    dbEmpleados.child(idx).update({ anticipos: empActual.anticipos });
+    
+    // Refrescamos la vista
+    renderHistorialAnticipos(document.getElementById('pago-parcial-monto').dataset.sueldo);
+}
 function guardarEvaluacion() {
     const puntaje = document.getElementById('eval-puntaje').value;
     const comentario = document.getElementById('eval-comentario').value;
