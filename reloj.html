@@ -103,26 +103,43 @@
     let centroActivo = "";
     let profActivo = null;
 
-    db.child('empleados').on('value', snap => {
-        const val = snap.val();
-        empleados = val ? (Array.isArray(val) ? val : Object.values(val)) : [];
+    // --- SUSTITUÍ TU BLOQUE DE CARGA DE EMPLEADOS POR ESTE ---
+db.child('empleados').once('value', snap => {
+    const val = snap.val();
+    const listaCompleta = val ? (Array.isArray(val) ? val : Object.values(val)) : [];
+    
+    // Filtramos: Solo empleados que NO tienen fecha de egreso (fEgreso vacía o inexistente)
+    empleados = listaCompleta.filter(e => !e.fEgreso || e.fEgreso === "");
+    
+    console.log("Empleados activos cargados:", empleados.length);
+}).catch(err => {
+    console.error("Error al cargar empleados:", err);
+    // Un simple aviso para que sepas qué pasó
+    alert("No se pudo cargar la lista, revisá tu conexión.");
+});
+
+   function seleccionarCentro(c) {
+    centroActivo = c;
+    document.getElementById('paso-centros').style.display = 'none';
+    document.getElementById('paso-profesionales').style.display = 'block';
+    
+    const lista = document.getElementById('lista-prof');
+    lista.innerHTML = "Cargando..."; // Feedback visual inmediato
+
+    // Filtramos los empleados que coinciden con el centro
+    const filtrados = empleados.filter(e => e.c === c);
+    
+    lista.innerHTML = ""; // Limpiamos el "Cargando..."
+    
+    filtrados.forEach(e => {
+        const btn = document.createElement('button');
+        btn.className = 'btn-prof';
+        btn.innerHTML = `<div><b>${e.n}</b><br><small>${e.esp || 'Profesional'}</small></div><span>🖋️</span>`;
+        // En lugar de pasar el string JSON, llamamos a la función pasando el objeto directamente
+        btn.onclick = () => abrirMóduloFirma(e); 
+        lista.appendChild(btn);
     });
-
-    function seleccionarCentro(c) {
-        centroActivo = c;
-        document.getElementById('paso-centros').style.display = 'none';
-        document.getElementById('paso-profesionales').style.display = 'block';
-        const lista = document.getElementById('lista-prof');
-        lista.innerHTML = "";
-        empleados.filter(e => e.c === c).forEach(e => {
-            lista.innerHTML += `
-                <button class="btn-prof" onclick='abrirMóduloFirma(${JSON.stringify(e)})'>
-                    <div><b>${e.n}</b><br><small>${e.esp || 'Profesional'}</small></div>
-                    <span>🖋️</span>
-                </button>`;
-        });
-    }
-
+       
     function abrirMóduloFirma(emp) {
         profActivo = emp;
         const fVal = document.getElementById('fecha-registro').value;
