@@ -139,7 +139,7 @@ db.child('empleados').once('value', snap => {
         btn.onclick = () => abrirMóduloFirma(e); 
         lista.appendChild(btn);
     });
-       
+   }    
     function abrirMóduloFirma(emp) {
         profActivo = emp;
         const fVal = document.getElementById('fecha-registro').value;
