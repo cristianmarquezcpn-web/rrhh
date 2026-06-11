@@ -382,17 +382,39 @@
 
     // --- LEGAJOS ---
 function renderLegajos() {
-    document.getElementById('b-legajos').innerHTML = empleados.map((e, i) => {
+    const contenedor = document.getElementById('b-legajos');
+    if (!contenedor) return;
+
+    contenedor.innerHTML = empleados.map((e, i) => {
         // Cálculo automático de salida: entrada + horas diarias
         let hSalida = "--:--";
-        if(e.hIngreso && e.h) {
+        
+        if (e.hIngreso && e.h) {
             let [hh, mm] = e.hIngreso.split(':').map(Number);
-            let total = hh + parseInt(e.h);
-            let hhS = (total < 24 ? total : total - 24).toString().padStart(2, '0');
-            let mmS = mm.toString().padStart(2, '0');
+            
+            // Convertimos la duración (e.h) a un número decimal (ej: 1.5)
+            let duracionTotalHoras = parseFloat(e.h); 
+            
+            // Obtenemos la parte entera (horas) y la decimal (minutos)
+            let hhDuracion = Math.floor(duracionTotalHoras);
+            let mmDuracion = Math.round((duracionTotalHoras - hhDuracion) * 60);
+            
+            // Sumamos horas y minutos
+            let totalH = hh + hhDuracion;
+            let totalM = mm + mmDuracion;
+            
+            // Ajuste si los minutos superan 60
+            if (totalM >= 60) {
+                totalH += Math.floor(totalM / 60);
+                totalM = totalM % 60;
+            }
+            
+            // Formateo para que siempre sea HH:MM
+            let hhS = (totalH < 24 ? totalH : totalH - 24).toString().padStart(2, '0');
+            let mmS = totalM.toString().padStart(2, '0');
+            
             hSalida = `${hhS}:${mmS}`;
         }
-
         return `
             <tr>
                 <td><input onchange="upd(${i},'n',this.value)" value="${e.n || ''}" style="width:100px" title="Nombre"></td>
