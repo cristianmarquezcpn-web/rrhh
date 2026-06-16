@@ -324,7 +324,7 @@
         <input type="text" id="buscar-emp" placeholder="🔍 Buscar profesional..." oninput="renderEmpleados()">
         <span id="emp-count">0</span>
 		<button onclick="exportarEmpleadosAExcel()" style="padding: 12px 20px; background: #1D6F42; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-    📊 Exportar Liquidación Completa
+    	📊 Exportar Liquidación Completa
 		</button>
     </div>
     <div id="empleados-container"></div>
@@ -1298,6 +1298,169 @@ function exportarExcelLiquidacion() {
         document.body.removeChild(link);
     });
 }
+	async function exportarEmpleadosAExcel() {
+    if (typeof XLSX === 'undefined') {
+        return alert("Error: La librería de Excel no está cargada. Verifica el script en el HTML.");
+    }
+
+    if (!empleados || empleados.length === 0) {
+        return alert("No hay datos de empleados para exportar.");
+    }
+
+    
+    let elMes = 0;
+    let elAnio = 2026;
+
+    try {
+        // Probamos si mS y aS están disponibles como variables globales
+        elMes = parseInt(mS.value);
+        elAnio = parseInt(aS.value) || 2026;
+    } catch (err) {
+        // Si tira error de "not defined", los capturamos directamente por el ID clásico de tu sistema
+        const selectMes = document.getElementById('filtro-mes') || document.getElementById('mesSelector'); 
+        const selectAnio = document.getElementById('filtro-anio') || document.getElementById('anioSelector');
+        
+        elMes = selectMes ? parseInt(selectMes.value) : new Date().getMonth();
+        elAnio = selectAnio ? parseInt(selectAnio.value) : new Date().getFullYear();
+    }
+
+    if (isNaN(elMes) || elMes < 0) elMes = new Date().getMonth();
+
+    
+    let listaMeses = [];
+    try {
+        listaMeses = meses;
+    } catch (err) {
+        listaMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    }
+    const nombreMesActual = listaMeses[elMes] || elMes;
+    
+    const [snapLiq, snapAsistGlobal] = await Promise.all([
+        baseDb.child(`liquidacionescongeladas`).once('value'),
+        dbAsistencia.child(`${elAnio}/${elMes}`).once('value')
+    ]);
+
+    const liquidacionesCongeladas = snapLiq.val() || {};
+    const asistenciaMes = snapAsistGlobal.val() || {};
+
+    // 3. Crear el libro de trabajo vacío
+    const wb = XLSX.utils.book_new();
+    const datosPorSede = {};
+
+    // 4. Procesar la nómina de profesionales
+    empleados.forEach(e => {
+        const codigoSede = e.c || 'SINSEDE';
+        const nombreSede = sedesMap[codigoSede] || codigoSede;
+
+        if (!datosPorSede[nombreSede]) {
+            datosPorSede[nombreSede] = [];
+        }
+
+        // --- CALCULO DE SUELDO CONGELADO / RESPALDO ---
+        let sueldoMes = 0;
+        let esCongelado = "No";
+
+        // Intentamos leer el dato exacto de la liquidación congelada guardada
+        if (liquidacionesCongeladas[codigoSede] && 
+            liquidacionesCongeladas[codigoSede][elAnio] && 
+            liquidacionesCongeladas[codigoSede][elAnio][elMes] && 
+            liquidacionesCongeladas[codigoSede][elAnio][elMes][e.id]) {
+            
+            sueldoMes = parseFloat(liquidacionesCongeladas[codigoSede][elAnio][elMes][e.id].total) || 0;
+            esCongelado = "Sí";
+        } else {
+            // Si no está congelado en la BD, replicamos tu algoritmo del legajo con la asistencia de ese mes
+            let p = 0, a = 0, ac = 0, f = 0;
+            let valorHora = parseFloat(e.vh) || 0;
+            let horasPorDia = parseFloat(e.h) || 0;
+            let esquemaLimpio = (e.esquema || "").trim();
+            let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
+            let horasComprometidas = (diasPorSemana * 4) * horasPorDia;
+
+            let horasDescontadasPorFaltas = 0;
+            let horasTardanzaDescontadas = 0;
+            let contadorTardanzasLeves = 0;
+            const dataAsist = (asistenciaMes[codigoSede] && asistenciaMes[codigoSede][e.id]) ? asistenciaMes[codigoSede][e.id] : {};
+            const diasEnMes = new Date(elAnio, elMes + 1, 0).getDate();
+
+            for (let d = 1; d <= diasEnMes; d++) {
+                let reg = dataAsist[d];
+                if (!reg) continue;
+                let valor = (typeof reg === 'object' && reg !== null) ? (reg.val || "") : reg.toString();
+                let status = valor.toUpperCase();
+
+                if (status === 'P') p++;
+                else if (status === 'A') a++;
+                else if (status === 'AC') ac++;
+                else if (status === 'F') f++;
+
+                if (status === 'A') horasDescontadasPorFaltas += horasPorDia;
+
+                if (typeof reg === 'object' && reg !== null && reg.in) {
+                    let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
+                    if (difIn > 15) {
+                        if (difIn <= 60) {
+                            contadorTardanzasLeves++;
+                            if (contadorTardanzasLeves === 3) {
+                                horasDescontadasPorFaltas += horasPorDia;
+                                contadorTardanzasLeves = 0;
+                            }
+                        } else {
+                            horasTardanzaDescontadas += Math.floor(difIn / 60);
+                        }
+                    }
+                }
+            }
+            let extras = parseFloat(dataAsist['EXT']) || 0;
+            let horasFinales = (horasComprometidas - horasDescontadasPorFaltas - horasTardanzaDescontadas) + extras;
+            sueldoMes = Math.round(horasFinales * valorHora);
+        }
+
+        // --- CÁLCULO DE ANTICIPOS ACUMULADOS ---
+        const anticiposArray = e.anticipos || [];
+        const totalAnticipos = anticiposArray.reduce((sum, a) => sum + (parseFloat(a.monto) || 0), 0);
+        
+        // Neto definitivo a liquidar
+        const netoAPagar = Math.max(0, sueldoMes - totalAnticipos);
+
+        // Estructuración final de las columnas
+        datosPorSede[nombreSede].push({
+            "Nombre Profesional": e.n || '',
+            "Profesión": e.profesion || '',
+            "CUIT": e.cuit || '',
+            "CBU": e.cbu || '',
+            "Email": e.m || '',
+            "Esquema": e.esquema || 'LMXJV',
+            "Horas/Día": parseFloat(e.h) || 0,
+            "Valor Hora ($)": parseFloat(e.vh) || 0,
+            "¿Líq. Congelada?": esCongelado,
+            "Sueldo del Mes ($)": sueldoMes,
+            "Anticipos Otorgados ($)": totalAnticipos,
+            "Neto a Pagar ($)": netoAPagar,
+            "Fecha Ingreso": e.fIngreso || '',
+            "Observaciones": e.observaciones || ''
+        });
+    });
+
+    // 5. Crear pestañas ordenadas e inyectar datos
+    const sedesOrdenadas = Object.keys(datosPorSede).sort();
+
+    sedesOrdenadas.forEach(nombreSede => {
+        const listaSede = datosPorSede[nombreSede].sort((a, b) => a["Nombre Profesional"].localeCompare(b["Nombre Profesional"]));
+        const ws = XLSX.utils.json_to_sheet(listaSede);
+
+        ws['!cols'] = [
+            {wch: 30}, {wch: 20}, {wch: 15}, {wch: 25}, {wch: 25}, 
+            {wch: 12}, {wch: 10}, {wch: 15}, {wch: 15}, {wch: 18}, 
+            {wch: 18}, {wch: 15}, {wch: 15}, {wch: 40}
+        ];
+
+        XLSX.utils.book_append_sheet(wb, ws, nombreSede.substring(0, 30));
+    });
+
+    // 6. Descarga inmediata indicando el mes auditado
+    XLSX.writeFile(wb, `Liquidacion_${nombreMesActual}_${elAnio}_Sedes.xlsx`);
+}
 // ============================================================
 // =============== MÓDULO EMPLEADOS (TITANIUM) ================
 // ============================================================
@@ -1629,172 +1792,6 @@ function guardarTodoLegajo() {
             fecha: new Date().toLocaleDateString()
         }
     };
-	async function exportarEmpleadosAExcel() {
-    if (typeof XLSX === 'undefined') {
-        return alert("Error: La librería de Excel no está cargada. Verifica el script en el HTML.");
-    }
-
-    if (!empleados || empleados.length === 0) {
-        return alert("No hay datos de empleados para exportar.");
-    }
-
-    // --- BLINDAJE CONTRA ELEMENTOS NO DEFINIDOS ---
-    // Intentamos usar tus variables globales mS y aS; si fallan, las buscamos por ID o usamos el valor actual.
-    let elMes = 0;
-    let elAnio = 2026;
-
-    try {
-        // Probamos si mS y aS están disponibles como variables globales
-        elMes = parseInt(mS.value);
-        elAnio = parseInt(aS.value) || 2026;
-    } catch (err) {
-        // Si tira error de "not defined", los capturamos directamente por el ID clásico de tu sistema
-        const selectMes = document.getElementById('filtro-mes') || document.getElementById('mesSelector'); 
-        const selectAnio = document.getElementById('filtro-anio') || document.getElementById('anioSelector');
-        
-        elMes = selectMes ? parseInt(selectMes.value) : new Date().getMonth();
-        elAnio = selectAnio ? parseInt(selectAnio.value) : new Date().getFullYear();
-    }
-
-    if (isNaN(elMes) || elMes < 0) elMes = new Date().getMonth();
-
-    // Replicamos o creamos el array de meses si la variable global 'meses' no está definida
-    let listaMeses = [];
-    try {
-        listaMeses = meses;
-    } catch (err) {
-        listaMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-    }
-    const nombreMesActual = listaMeses[elMes] || elMes;
-    // ------------------------------------------------
-
-    // 2. Traer de Firebase las liquidaciones congeladas y la asistencia global para el cálculo de respaldo
-    const [snapLiq, snapAsistGlobal] = await Promise.all([
-        baseDb.child(`liquidacionescongeladas`).once('value'),
-        dbAsistencia.child(`${elAnio}/${elMes}`).once('value')
-    ]);
-
-    const liquidacionesCongeladas = snapLiq.val() || {};
-    const asistenciaMes = snapAsistGlobal.val() || {};
-
-    // 3. Crear el libro de trabajo vacío
-    const wb = XLSX.utils.book_new();
-    const datosPorSede = {};
-
-    // 4. Procesar la nómina de profesionales
-    empleados.forEach(e => {
-        const codigoSede = e.c || 'SINSEDE';
-        const nombreSede = sedesMap[codigoSede] || codigoSede;
-
-        if (!datosPorSede[nombreSede]) {
-            datosPorSede[nombreSede] = [];
-        }
-
-        // --- CALCULO DE SUELDO CONGELADO / RESPALDO ---
-        let sueldoMes = 0;
-        let esCongelado = "No";
-
-        // Intentamos leer el dato exacto de la liquidación congelada guardada
-        if (liquidacionesCongeladas[codigoSede] && 
-            liquidacionesCongeladas[codigoSede][elAnio] && 
-            liquidacionesCongeladas[codigoSede][elAnio][elMes] && 
-            liquidacionesCongeladas[codigoSede][elAnio][elMes][e.id]) {
-            
-            sueldoMes = parseFloat(liquidacionesCongeladas[codigoSede][elAnio][elMes][e.id].total) || 0;
-            esCongelado = "Sí";
-        } else {
-            // Si no está congelado en la BD, replicamos tu algoritmo del legajo con la asistencia de ese mes
-            let p = 0, a = 0, ac = 0, f = 0;
-            let valorHora = parseFloat(e.vh) || 0;
-            let horasPorDia = parseFloat(e.h) || 0;
-            let esquemaLimpio = (e.esquema || "").trim();
-            let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
-            let horasComprometidas = (diasPorSemana * 4) * horasPorDia;
-
-            let horasDescontadasPorFaltas = 0;
-            let horasTardanzaDescontadas = 0;
-            let contadorTardanzasLeves = 0;
-            const dataAsist = (asistenciaMes[codigoSede] && asistenciaMes[codigoSede][e.id]) ? asistenciaMes[codigoSede][e.id] : {};
-            const diasEnMes = new Date(elAnio, elMes + 1, 0).getDate();
-
-            for (let d = 1; d <= diasEnMes; d++) {
-                let reg = dataAsist[d];
-                if (!reg) continue;
-                let valor = (typeof reg === 'object' && reg !== null) ? (reg.val || "") : reg.toString();
-                let status = valor.toUpperCase();
-
-                if (status === 'P') p++;
-                else if (status === 'A') a++;
-                else if (status === 'AC') ac++;
-                else if (status === 'F') f++;
-
-                if (status === 'A') horasDescontadasPorFaltas += horasPorDia;
-
-                if (typeof reg === 'object' && reg !== null && reg.in) {
-                    let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
-                    if (difIn > 15) {
-                        if (difIn <= 60) {
-                            contadorTardanzasLeves++;
-                            if (contadorTardanzasLeves === 3) {
-                                horasDescontadasPorFaltas += horasPorDia;
-                                contadorTardanzasLeves = 0;
-                            }
-                        } else {
-                            horasTardanzaDescontadas += Math.floor(difIn / 60);
-                        }
-                    }
-                }
-            }
-            let extras = parseFloat(dataAsist['EXT']) || 0;
-            let horasFinales = (horasComprometidas - horasDescontadasPorFaltas - horasTardanzaDescontadas) + extras;
-            sueldoMes = Math.round(horasFinales * valorHora);
-        }
-
-        // --- CÁLCULO DE ANTICIPOS ACUMULADOS ---
-        const anticiposArray = e.anticipos || [];
-        const totalAnticipos = anticiposArray.reduce((sum, a) => sum + (parseFloat(a.monto) || 0), 0);
-        
-        // Neto definitivo a liquidar
-        const netoAPagar = Math.max(0, sueldoMes - totalAnticipos);
-
-        // Estructuración final de las columnas
-        datosPorSede[nombreSede].push({
-            "Nombre Profesional": e.n || '',
-            "Profesión": e.profesion || '',
-            "CUIT": e.cuit || '',
-            "CBU": e.cbu || '',
-            "Email": e.m || '',
-            "Esquema": e.esquema || 'LMXJV',
-            "Horas/Día": parseFloat(e.h) || 0,
-            "Valor Hora ($)": parseFloat(e.vh) || 0,
-            "¿Líq. Congelada?": esCongelado,
-            "Sueldo del Mes ($)": sueldoMes,
-            "Anticipos Otorgados ($)": totalAnticipos,
-            "Neto a Pagar ($)": netoAPagar,
-            "Fecha Ingreso": e.fIngreso || '',
-            "Observaciones": e.observaciones || ''
-        });
-    });
-
-    // 5. Crear pestañas ordenadas e inyectar datos
-    const sedesOrdenadas = Object.keys(datosPorSede).sort();
-
-    sedesOrdenadas.forEach(nombreSede => {
-        const listaSede = datosPorSede[nombreSede].sort((a, b) => a["Nombre Profesional"].localeCompare(b["Nombre Profesional"]));
-        const ws = XLSX.utils.json_to_sheet(listaSede);
-
-        ws['!cols'] = [
-            {wch: 30}, {wch: 20}, {wch: 15}, {wch: 25}, {wch: 25}, 
-            {wch: 12}, {wch: 10}, {wch: 15}, {wch: 15}, {wch: 18}, 
-            {wch: 18}, {wch: 15}, {wch: 15}, {wch: 40}
-        ];
-
-        XLSX.utils.book_append_sheet(wb, ws, nombreSede.substring(0, 30));
-    });
-
-    // 6. Descarga inmediata indicando el mes auditado
-    XLSX.writeFile(wb, `Liquidacion_${nombreMesActual}_${elAnio}_Sedes.xlsx`);
-}
 
     // Actualizamos solo esa parte en la base de datos
     dbEmpleados.child(idx).update(datosGuardar).then(() => {
