@@ -1682,7 +1682,7 @@ async function abrirLegajo(idEmpleado) {
                             return `<div style="border-bottom:1px solid #ddd; padding:6px; font-size:13px;">
                             <b>${nombreMes} ${anio}:</b> $${parseFloat(datos.total || 0).toLocaleString()} 
                             <br><span style="color:#666;">Hs: ${datos.hs || 0} | Extras: ${datos.extras || 0} | VH: $${datos.vh || 0}</span>
-                            </div>`;  
+                            </div>`;   
                         }).join('')
                     ).join('') : '<div style="padding:5px;">No hay historial.</div>'}
                 </div>
@@ -1711,9 +1711,13 @@ async function abrirLegajo(idEmpleado) {
 
     const cuitLimpio = limpiarId(empActual.cuit);
     const cbuLimpio = limpiarId(empActual.cbu);
-    const anticiposAut = await buscarAnticiposAutomaticos(cuitLimpio, cbuLimpio, anioActual, mesAct);
+    
+    // Doble búsqueda para capturar anticipos pagados el mes siguiente
+    const autActual = await buscarAnticiposAutomaticos(cuitLimpio, cbuLimpio, anioActual, mesAct);
+    const autSiguiente = await buscarAnticiposAutomaticos(cuitLimpio, cbuLimpio, anioActual, mesAct + 1);
+    const todosLosAut = [...autActual, ...autSiguiente];
 
-    renderHistorialAnticipos(sueldoEstimado, empActual.anticipos || [], anticiposAut);
+    renderHistorialAnticipos(sueldoEstimado, empActual.anticipos || [], todosLosAut);
 }
 function calcularDiferenciaMinutos(hEsperada, hReal) {
     if (!hEsperada || !hReal) return 0;
@@ -1778,32 +1782,39 @@ function registrarAnticipo() {
     if (!monto || !fecha) return alert("Completa monto y fecha");
 
     const anticipos = empActual.anticipos || [];
-    anticipos.push({ monto: parseFloat(monto), fecha });
+    anticipos.push({ monto: parseFloat(monto), fecha, origen: 'MANUAL' });
     
     // Guardamos en la base de datos
     dbEmpleados.child(empleados.indexOf(empActual)).update({ anticipos });
     
-    // Refrescamos la visual del historial
-    renderHistorialAnticipos();
+    // Al registrar, necesitamos volver a buscar los automáticos para refrescar el render
+    // Nota: Asegúrate de tener acceso a los parámetros necesarios (anioActual, mesAct)
+    // Si no, deberás obtenerlos de tus inputs globales (aS.value, mS.value)
+    abrirLegajo(empActual.id || empActual.n); 
 }
- function renderHistorialAnticipos(sueldoCalculado) {
+
+function renderHistorialAnticipos(sueldoCalculado, manuales = [], automaticos = []) {
     const container = document.getElementById('historial-anticipos');
-    const anticipos = empActual.anticipos || [];
-    const totalDado = anticipos.reduce((sum, a) => sum + parseFloat(a.monto), 0);
+    if (!container) return;
+
+    // Combinamos todo en un solo array
+    const todosLosAnticipos = [...manuales, ...automaticos];
+    const totalDado = todosLosAnticipos.reduce((sum, a) => sum + parseFloat(a.monto), 0);
     const sueldoNeto = sueldoCalculado || 0;
     const faltante = Math.max(0, sueldoNeto - totalDado);
     
     container.innerHTML = `
-        <p>💰 Anticipado: $${totalDado.toLocaleString()} | 📌 Faltante: <b>$${faltante.toLocaleString()}</b></p>
-        ${anticipos.map((a, index) => `
-            <div style="display:flex; justify-content:space-between; margin-bottom:5px; background:#fff; padding:2px 5px;">
-                <span>${a.fecha}: $${a.monto}</span>
-                <button onclick="eliminarAnticipo(${index})" style="color:red; cursor:pointer;">Eliminar</button>
-            </div>
-        `).join('')}
+        <p>💰 Anticipado Total: $${totalDado.toLocaleString()} | 📌 Faltante: <b>$${faltante.toLocaleString()}</b></p>
+        <div style="max-height: 150px; overflow-y: auto; border: 1px solid #eee;">
+            ${todosLosAnticipos.map((a, index) => `
+                <div style="display:flex; justify-content:space-between; margin-bottom:2px; background:${a.origen === 'AUTO' ? '#f0fff0' : '#fff'}; padding:4px 8px; border-bottom: 1px solid #f9f9f9;">
+                    <span>${a.fecha}: <b>$${parseFloat(a.monto).toLocaleString()}</b> ${a.origen === 'AUTO' ? '<small style="color:green;">(Auto)</small>' : ''}</span>
+                    ${a.origen !== 'AUTO' ? `<button onclick="eliminarAnticipo(${index})" style="color:red; cursor:pointer; border:none; background:none;">Eliminar</button>` : ''}
+                </div>
+            `).join('')}
+        </div>
     `;
 }
-
 function eliminarAnticipo(index) {
     if (!confirm("¿Seguro que deseas eliminar este anticipo?")) return;
     empActual.anticipos.splice(index, 1);
