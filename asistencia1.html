@@ -1708,12 +1708,13 @@ async function abrirLegajo(idEmpleado) {
     
     if(empActual.evaluacion?.puntaje) document.getElementById('leg-puntaje').value = empActual.evaluacion.puntaje;
     document.getElementById('pago-parcial-monto').dataset.sueldo = sueldoEstimado;
+	const cuitLimpio = limpiarId(empActual.cuit);
+	const cbuLimpio = limpiarId(empActual.cbu);
 
-    const cuitLimpio = limpiarId(empActual.cuit);
-    const cbuLimpio = limpiarId(empActual.cbu);
-    const anticiposAut = await buscarAnticiposAutomaticos(cuitLimpio, cbuLimpio);
 
-    renderHistorialAnticipos(sueldoEstimado, empActual.anticipos || [], anticiposAut);
+	const anticiposAut = await buscarAnticiposAutomaticos(cuitLimpio, cbuLimpio, anioActual, mesAct);
+
+	renderHistorialAnticipos(sueldoEstimado, empActual.anticipos || [], anticiposAut);
 }
 function calcularDiferenciaMinutos(hEsperada, hReal) {
     if (!hEsperada || !hReal) return 0;
@@ -1735,40 +1736,50 @@ function limpiarId(valor) {
     // Elimina guiones, puntos, espacios y cualquier cosa que no sea número
     return valor.toString().replace(/[^0-9]/g, '');
 }
-async function buscarAnticiposAutomaticos(cuit, cbu) {
-    const periodo = "2026-06";
+async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
+    // Formato de mes: 0-11 (como viene de Date/tu código), lo pasamos a string 01-12
+    const mesStr = (mes + 1).toString().padStart(2, '0');
+    const periodo = `${anio}-${mesStr}`; 
+    
+    // Usamos baseDb que ya apunta a /SISTEMA_PERSONAL
     const [snapPend, snapDiario] = await Promise.all([
-        db.ref(`contabilidad/${periodo}/pendientes`).once('value'),
-        db.ref(`contabilidad/${periodo}/librodiario`).once('value')
+        baseDb.child(`contabilidad/${periodo}/pendientes`).once('value'),
+        baseDb.child(`contabilidad/${periodo}/librodiario`).once('value')
     ]);
 
-    const movs = [...Object.values(snapPend.val() || {}), ...Object.values(snapDiario.val() || {})];
+    const movsPendientes = Object.values(snapPend.val() || {});
+    const movsDiario = [];
     
-    // Normalizamos el CUIT y CBU del empleado ANTES de buscar
+    Object.values(snapDiario.val() || {}).forEach(asiento => {
+        if(asiento.asientos) {
+            asiento.asientos.forEach(linea => movsDiario.push(linea));
+        }
+    });
+
+    const todosMovs = [...movsPendientes, ...movsDiario];
+    const encontrados = new Map();
+    
     const cuitTarget = limpiarId(cuit);
     const cbuTarget = limpiarId(cbu);
     
-    const encontrados = [];
-
-    movs.forEach(mov => {
-        // Obtenemos descripción de pendientes o 'detalle' de diario
-        const descCompleta = (mov.descripcion || mov.detalle || "").toString();
-        // Limpiamos la descripción del banco para buscar solo números
-        const descLimpia = limpiarId(descCompleta);
+    todosMovs.forEach(mov => {
+        const desc = (mov.descripcion || mov.detalle || "").toString();
+        const descLimpia = limpiarId(desc);
         const monto = Math.abs(parseFloat(mov.monto || mov.haber || 0));
-
-        // CRUCE: Si el CUIT o CBU limpio aparece dentro de la descripción limpia
-        if (monto > 0 && (descLimpia.includes(cuitTarget) || descLimpia.includes(cbuTarget))) {
-            encontrados.push({
-                monto: monto,
-                fecha: mov.fecha,
-                origen: 'AUTO'
-            });
+        
+        // El haber en el diario representa el dinero que sale de la cuenta bancaria
+        const esEgreso = mov.monto < 0 || (mov.haber && parseFloat(mov.haber) > 0);
+        
+        if (esEgreso && (descLimpia.includes(cuitTarget) || descLimpia.includes(cbuTarget))) {
+            const claveUnica = `${mov.fecha}_${monto}`;
+            if (!encontrados.has(claveUnica)) {
+                encontrados.set(claveUnica, { monto, fecha: mov.fecha, origen: 'AUTO' });
+            }
         }
     });
     
-    return encontrados;
-}	
+    return Array.from(encontrados.values());
+}
 function registrarAnticipo() {
     const monto = document.getElementById('pago-parcial-monto').value;
     const fecha = document.getElementById('pago-parcial-fecha').value;
