@@ -1530,51 +1530,6 @@ function renderEmpleados() {
 // ============ MODAL LEGAJO INDIVIDUAL =======================
 // ============================================================
 let empActual = null;
-async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
-    const mesStr = (mes + 1).toString().padStart(2, '0');
-    const periodo = `${anio}-${mesStr}`; 
-    
-    const [snapPend, snapDiario] = await Promise.all([
-        baseDb.child(`contabilidad/${periodo}/pendientes`).once('value'),
-        baseDb.child(`contabilidad/${periodo}/librodiario`).once('value')
-    ]);
-
-    const movsPendientes = Object.values(snapPend.val() || {});
-    const movsDiario = [];
-    
-    Object.values(snapDiario.val() || {}).forEach(asiento => {
-        if(asiento.asientos) {
-            asiento.asientos.forEach(linea => movsDiario.push(linea));
-        }
-    });
-
-    const todosMovs = [...movsPendientes, ...movsDiario];
-    const encontrados = new Map();
-    
-    const cuitTarget = limpiarId(cuit);
-    const cbuTarget = limpiarId(cbu);
-    
-    todosMovs.forEach(mov => {
-        const desc = (mov.descripcion || mov.detalle || "").toString();
-        const descLimpia = limpiarId(desc);
-        const monto = Math.abs(parseFloat(mov.monto || mov.haber || 0));
-        
-        // --- LOG DE DIAGNÓSTICO ---
-        console.log(`Analizando: "${desc}" | Limpio: "${descLimpia}" | Buscando CUIT: "${cuitTarget}" | CBU: "${cbuTarget}" | Monto: ${monto}`);
-        
-        const esEgreso = mov.monto < 0 || (mov.haber && parseFloat(mov.haber) > 0);
-        
-        if (esEgreso && (descLimpia.includes(cuitTarget) || descLimpia.includes(cbuTarget))) {
-            const claveUnica = `${mov.fecha}_${monto}`;
-            if (!encontrados.has(claveUnica)) {
-                encontrados.set(claveUnica, { monto, fecha: mov.fecha, origen: 'AUTO' });
-            }
-        }
-    });
-    
-    return Array.from(encontrados.values());
-}
-
 async function abrirLegajo(idEmpleado) {
     empActual = empleados.find(e => (e.id || e.n) === idEmpleado);
     if (!empActual) return alert("Profesional no encontrado");
@@ -1781,11 +1736,9 @@ function limpiarId(valor) {
     return valor.toString().replace(/[^0-9]/g, '');
 }
 async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
-    // Formato de mes: 0-11 (como viene de Date/tu código), lo pasamos a string 01-12
     const mesStr = (mes + 1).toString().padStart(2, '0');
     const periodo = `${anio}-${mesStr}`; 
     
-    // Usamos baseDb que ya apunta a /SISTEMA_PERSONAL
     const [snapPend, snapDiario] = await Promise.all([
         baseDb.child(`contabilidad/${periodo}/pendientes`).once('value'),
         baseDb.child(`contabilidad/${periodo}/librodiario`).once('value')
@@ -1811,7 +1764,9 @@ async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
         const descLimpia = limpiarId(desc);
         const monto = Math.abs(parseFloat(mov.monto || mov.haber || 0));
         
-        // El haber en el diario representa el dinero que sale de la cuenta bancaria
+        // --- LOG DE DIAGNÓSTICO ---
+        console.log(`Analizando: "${desc}" | Limpio: "${descLimpia}" | Buscando CUIT: "${cuitTarget}" | CBU: "${cbuTarget}" | Monto: ${monto}`);
+        
         const esEgreso = mov.monto < 0 || (mov.haber && parseFloat(mov.haber) > 0);
         
         if (esEgreso && (descLimpia.includes(cuitTarget) || descLimpia.includes(cbuTarget))) {
