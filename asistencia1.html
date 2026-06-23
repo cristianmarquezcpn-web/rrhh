@@ -1751,29 +1751,32 @@ async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
 
     const movs = [...Object.values(snapPend.val() || {}), ...Object.values(snapDiario.val() || {})];
     const encontrados = new Map();
+    
+    // Normalizamos ambos identificadores
     const cuitTarget = limpiarId(cuit);
+    const cbuTarget = limpiarId(cbu);
     
     movs.forEach(mov => {
-        // Obtenemos los datos normalizados
         const detalle = (mov.descripcion || mov.detalle || "").toString();
+        const detalleLimpio = limpiarId(detalle); // Normalizamos el texto del movimiento
         const monto = Math.abs(parseFloat(mov.monto || mov.haber || 0));
         
-        // Verificamos si contiene el CUIT (usando limpiarId)
-        const contieneCuit = limpiarId(detalle).includes(cuitTarget);
+        // Verificamos si contiene el CUIT O el CBU
+        const contieneCuit = cuitTarget && detalleLimpio.includes(cuitTarget);
+        const contieneCbu = cbuTarget && detalleLimpio.includes(cbuTarget);
         
         // Detectamos si es una salida de dinero
         const esEgreso = (mov.monto < 0 || (mov.haber && parseFloat(mov.haber) > 0));
 
-        if (contieneCuit && esEgreso) {
+        // Si es egreso Y contiene CUIT o CBU, lo marcamos
+        if ((contieneCuit || contieneCbu) && esEgreso) {
             console.log("✅ ENCONTRADO como anticipo:", detalle, "Monto:", monto);
             const claveUnica = `${mov.fecha || 'sinfecha'}_${monto}`;
             encontrados.set(claveUnica, { monto, fecha: mov.fecha || '', origen: 'AUTO' });
         }
     });
-    
-    const listaFinal = Array.from(encontrados.values());
-    console.log("Anticipos encontrados y listos para inyectar:", listaFinal);
-    return listaFinal;
+
+    return Array.from(encontrados.values());
 }
 function registrarAnticipo() {
     const monto = document.getElementById('pago-parcial-monto').value;
