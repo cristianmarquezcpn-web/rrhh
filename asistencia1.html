@@ -1739,19 +1739,27 @@ async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
     const mesStr = (mes + 1).toString().padStart(2, '0');
     const periodo = `${anio}-${mesStr}`; 
     
+    // AQUÍ ESTÁ EL CAMBIO: Apuntamos a la raíz directamente
+    const rootRef = firebase.database().ref(); 
+    
+    console.log("Buscando en raíz:", `contabilidad/${periodo}/pendientes`);
+    
     const [snapPend, snapDiario] = await Promise.all([
-        baseDb.child(`contabilidad/${periodo}/pendientes`).once('value'),
-        baseDb.child(`contabilidad/${periodo}/librodiario`).once('value')
+        rootRef.child(`contabilidad/${periodo}/pendientes`).once('value'),
+        rootRef.child(`contabilidad/${periodo}/librodiario`).once('value')
     ]);
 
     const movsPendientes = Object.values(snapPend.val() || {});
     const movsDiario = [];
     
-    Object.values(snapDiario.val() || {}).forEach(asiento => {
-        if(asiento.asientos) {
-            asiento.asientos.forEach(linea => movsDiario.push(linea));
-        }
-    });
+    // Si snapDiario.val() es null, esto evitará el error
+    if (snapDiario.val()) {
+        Object.values(snapDiario.val()).forEach(asiento => {
+            if(asiento.asientos) {
+                asiento.asientos.forEach(linea => movsDiario.push(linea));
+            }
+        });
+    }
 
     const todosMovs = [...movsPendientes, ...movsDiario];
     const encontrados = new Map();
@@ -1764,8 +1772,7 @@ async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
         const descLimpia = limpiarId(desc);
         const monto = Math.abs(parseFloat(mov.monto || mov.haber || 0));
         
-        // --- LOG DE DIAGNÓSTICO ---
-        console.log(`Analizando: "${desc}" | Limpio: "${descLimpia}" | Buscando CUIT: "${cuitTarget}" | CBU: "${cbuTarget}" | Monto: ${monto}`);
+        console.log(`Analizando: "${desc}" | Buscando: "${cuitTarget}" | Monto: ${monto}`);
         
         const esEgreso = mov.monto < 0 || (mov.haber && parseFloat(mov.haber) > 0);
         
