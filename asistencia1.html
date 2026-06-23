@@ -1752,25 +1752,25 @@ async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
     const movs = [...Object.values(snapPend.val() || {}), ...Object.values(snapDiario.val() || {})];
     const encontrados = new Map();
     
-    // Normalizamos ambos identificadores
     const cuitTarget = limpiarId(cuit);
-    const cbuTarget = limpiarId(cbu);
+    const cbuLimpio = limpiarId(cbu);
+    
+    const cbuFlexible = cbuLimpio.length > 15 ? cbuLimpio.substring(2, 18) : cbuLimpio;
     
     movs.forEach(mov => {
         const detalle = (mov.descripcion || mov.detalle || "").toString();
-        const detalleLimpio = limpiarId(detalle); // Normalizamos el texto del movimiento
+        const detalleLimpio = limpiarId(detalle);
         const monto = Math.abs(parseFloat(mov.monto || mov.haber || 0));
         
-        // Verificamos si contiene el CUIT O el CBU
         const contieneCuit = cuitTarget && detalleLimpio.includes(cuitTarget);
-        const contieneCbu = cbuTarget && detalleLimpio.includes(cbuTarget);
         
-        // Detectamos si es una salida de dinero
+        // Buscamos si el detalle contiene el CBU FLEXIBLE
+        const contieneCbu = cbuFlexible && detalleLimpio.includes(cbuFlexible);
+        
         const esEgreso = (mov.monto < 0 || (mov.haber && parseFloat(mov.haber) > 0));
 
-        // Si es egreso Y contiene CUIT o CBU, lo marcamos
         if ((contieneCuit || contieneCbu) && esEgreso) {
-            console.log("✅ ENCONTRADO como anticipo:", detalle, "Monto:", monto);
+            console.log("✅ ENCONTRADO (CUIT o CBU Flexible):", detalle, "Monto:", monto);
             const claveUnica = `${mov.fecha || 'sinfecha'}_${monto}`;
             encontrados.set(claveUnica, { monto, fecha: mov.fecha || '', origen: 'AUTO' });
         }
