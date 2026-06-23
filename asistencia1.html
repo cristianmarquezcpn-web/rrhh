@@ -1530,6 +1530,51 @@ function renderEmpleados() {
 // ============ MODAL LEGAJO INDIVIDUAL =======================
 // ============================================================
 let empActual = null;
+async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
+    const mesStr = (mes + 1).toString().padStart(2, '0');
+    const periodo = `${anio}-${mesStr}`; 
+    
+    const [snapPend, snapDiario] = await Promise.all([
+        baseDb.child(`contabilidad/${periodo}/pendientes`).once('value'),
+        baseDb.child(`contabilidad/${periodo}/librodiario`).once('value')
+    ]);
+
+    const movsPendientes = Object.values(snapPend.val() || {});
+    const movsDiario = [];
+    
+    Object.values(snapDiario.val() || {}).forEach(asiento => {
+        if(asiento.asientos) {
+            asiento.asientos.forEach(linea => movsDiario.push(linea));
+        }
+    });
+
+    const todosMovs = [...movsPendientes, ...movsDiario];
+    const encontrados = new Map();
+    
+    const cuitTarget = limpiarId(cuit);
+    const cbuTarget = limpiarId(cbu);
+    
+    todosMovs.forEach(mov => {
+        const desc = (mov.descripcion || mov.detalle || "").toString();
+        const descLimpia = limpiarId(desc);
+        const monto = Math.abs(parseFloat(mov.monto || mov.haber || 0));
+        
+        // --- LOG DE DIAGNÓSTICO ---
+        console.log(`Analizando: "${desc}" | Limpio: "${descLimpia}" | Buscando CUIT: "${cuitTarget}" | CBU: "${cbuTarget}" | Monto: ${monto}`);
+        
+        const esEgreso = mov.monto < 0 || (mov.haber && parseFloat(mov.haber) > 0);
+        
+        if (esEgreso && (descLimpia.includes(cuitTarget) || descLimpia.includes(cbuTarget))) {
+            const claveUnica = `${mov.fecha}_${monto}`;
+            if (!encontrados.has(claveUnica)) {
+                encontrados.set(claveUnica, { monto, fecha: mov.fecha, origen: 'AUTO' });
+            }
+        }
+    });
+    
+    return Array.from(encontrados.values());
+}
+
 async function abrirLegajo(idEmpleado) {
     empActual = empleados.find(e => (e.id || e.n) === idEmpleado);
     if (!empActual) return alert("Profesional no encontrado");
@@ -1708,13 +1753,12 @@ async function abrirLegajo(idEmpleado) {
     
     if(empActual.evaluacion?.puntaje) document.getElementById('leg-puntaje').value = empActual.evaluacion.puntaje;
     document.getElementById('pago-parcial-monto').dataset.sueldo = sueldoEstimado;
-	const cuitLimpio = limpiarId(empActual.cuit);
-	const cbuLimpio = limpiarId(empActual.cbu);
 
+    const cuitLimpio = limpiarId(empActual.cuit);
+    const cbuLimpio = limpiarId(empActual.cbu);
+    const anticiposAut = await buscarAnticiposAutomaticos(cuitLimpio, cbuLimpio, anioActual, mesAct);
 
-	const anticiposAut = await buscarAnticiposAutomaticos(cuitLimpio, cbuLimpio, anioActual, mesAct);
-
-	renderHistorialAnticipos(sueldoEstimado, empActual.anticipos || [], anticiposAut);
+    renderHistorialAnticipos(sueldoEstimado, empActual.anticipos || [], anticiposAut);
 }
 function calcularDiferenciaMinutos(hEsperada, hReal) {
     if (!hEsperada || !hReal) return 0;
