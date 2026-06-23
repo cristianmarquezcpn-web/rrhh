@@ -1585,7 +1585,6 @@ async function abrirLegajo(idEmpleado) {
         let reg = dataAsist[d];
         if (!reg) continue;
 
-        // Lógica corregida: lee tanto el valor directo como el objeto con .val
         let valor = (typeof reg === 'object' && reg !== null) ? (reg.val || "") : reg.toString();
         let status = valor.toUpperCase();
 
@@ -1709,7 +1708,12 @@ async function abrirLegajo(idEmpleado) {
     
     if(empActual.evaluacion?.puntaje) document.getElementById('leg-puntaje').value = empActual.evaluacion.puntaje;
     document.getElementById('pago-parcial-monto').dataset.sueldo = sueldoEstimado;
-    renderHistorialAnticipos(sueldoEstimado);
+
+    const cuitLimpio = limpiarId(empActual.cuit);
+    const cbuLimpio = limpiarId(empActual.cbu);
+    const anticiposAut = await buscarAnticiposAutomaticos(cuitLimpio, cbuLimpio);
+
+    renderHistorialAnticipos(sueldoEstimado, empActual.anticipos || [], anticiposAut);
 }
 function calcularDiferenciaMinutos(hEsperada, hReal) {
     if (!hEsperada || !hReal) return 0;
@@ -1726,6 +1730,45 @@ function guardarObservacion() {
     dbEmpleados.child(idx).update({ observaciones: obs });
     alert('✅ Guardado');
 }
+function limpiarId(valor) {
+    if (!valor) return "NO_EXISTE_VALOR_A_LIMPIAR";
+    // Elimina guiones, puntos, espacios y cualquier cosa que no sea número
+    return valor.toString().replace(/[^0-9]/g, '');
+}
+async function buscarAnticiposAutomaticos(cuit, cbu) {
+    const periodo = "2026-06";
+    const [snapPend, snapDiario] = await Promise.all([
+        db.ref(`contabilidad/${periodo}/pendientes`).once('value'),
+        db.ref(`contabilidad/${periodo}/librodiario`).once('value')
+    ]);
+
+    const movs = [...Object.values(snapPend.val() || {}), ...Object.values(snapDiario.val() || {})];
+    
+    // Normalizamos el CUIT y CBU del empleado ANTES de buscar
+    const cuitTarget = limpiarId(cuit);
+    const cbuTarget = limpiarId(cbu);
+    
+    const encontrados = [];
+
+    movs.forEach(mov => {
+        // Obtenemos descripción de pendientes o 'detalle' de diario
+        const descCompleta = (mov.descripcion || mov.detalle || "").toString();
+        // Limpiamos la descripción del banco para buscar solo números
+        const descLimpia = limpiarId(descCompleta);
+        const monto = Math.abs(parseFloat(mov.monto || mov.haber || 0));
+
+        // CRUCE: Si el CUIT o CBU limpio aparece dentro de la descripción limpia
+        if (monto > 0 && (descLimpia.includes(cuitTarget) || descLimpia.includes(cbuTarget))) {
+            encontrados.push({
+                monto: monto,
+                fecha: mov.fecha,
+                origen: 'AUTO'
+            });
+        }
+    });
+    
+    return encontrados;
+}	
 function registrarAnticipo() {
     const monto = document.getElementById('pago-parcial-monto').value;
     const fecha = document.getElementById('pago-parcial-fecha').value;
