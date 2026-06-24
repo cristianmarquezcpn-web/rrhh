@@ -1755,7 +1755,7 @@ async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
     const cuitTarget = limpiarId(cuit);
     const cbuLimpio = limpiarId(cbu);
     
-    const cbuFlexible = cbuLimpio.length > 15 ? cbuLimpio.substring(3, 21) : cbuLimpio;
+    const cbuFlexible = cbuLimpio.length > 11 ? cbuLimpio.substring(3, 21) : cbuLimpio;
     
     movs.forEach(mov => {
         const detalle = (mov.descripcion || mov.detalle || "").toString();
