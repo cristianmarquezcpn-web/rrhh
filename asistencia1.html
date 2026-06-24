@@ -1710,14 +1710,14 @@ async function abrirLegajo(idEmpleado) {
     document.getElementById('pago-parcial-monto').dataset.sueldo = sueldoEstimado;
 
     const cuitLimpio = limpiarId(empActual.cuit);
-    const cbuLimpio = limpiarId(empActual.cbu);
-    
-    // Doble búsqueda para capturar anticipos pagados el mes siguiente
+    const cbuLimpio = limpiarId(empActual.cbu); 
+    const mesAnterior = mesAct === 0 ? 11 : mesAct - 1;
+    const anioAnterior = mesAct === 0 ? anioActual - 1 : anioActual;
+    const sueldoMesAnterior = liquidaciones[c]?.[anioAnterior]?.[mesAnterior]?.[empActual.id]?.total || 0;
     const autActual = await buscarAnticiposAutomaticos(cuitLimpio, cbuLimpio, anioActual, mesAct);
     const autSiguiente = await buscarAnticiposAutomaticos(cuitLimpio, cbuLimpio, anioActual, mesAct + 1);
     const todosLosAut = [...autActual, ...autSiguiente];
-
-    renderHistorialAnticipos(sueldoEstimado, empActual.anticipos || [], todosLosAut);
+    renderHistorialAnticipos(sueldoEstimado, empActual.anticipos || [], todosLosAut, parseFloat(sueldoMesAnterior));
 }
 function calcularDiferenciaMinutos(hEsperada, hReal) {
     if (!hEsperada || !hReal) return 0;
@@ -1755,8 +1755,12 @@ async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
     const cuitTarget = limpiarId(cuit);
     const cbuLimpio = limpiarId(cbu);
     
-    const cbuFlexible = cbuLimpio.length > 7 ? cbuLimpio.substring(2, 21) : cbuLimpio;
-    
+    // ESTRATEGIA GENÉRICA:
+    // Dividimos el CBU en bloques de 4 dígitos. 
+    // Buscamos movimientos que contengan al menos 3 de esos bloques en orden.
+    // Esto ignora el '0' extra al principio o bloques 'basura' insertados en el medio.
+    const bloques = cbuLimpio.match(/.{1,4}/g) || [];
+
     movs.forEach(mov => {
         const detalle = (mov.descripcion || mov.detalle || "").toString();
         const detalleLimpio = limpiarId(detalle);
@@ -1764,13 +1768,19 @@ async function buscarAnticiposAutomaticos(cuit, cbu, anio, mes) {
         
         const contieneCuit = cuitTarget && detalleLimpio.includes(cuitTarget);
         
-        // Buscamos si el detalle contiene el CBU FLEXIBLE
-        const contieneCbu = cbuFlexible && detalleLimpio.includes(cbuFlexible);
+        // Verificamos si el detalle contiene la mayoría de los bloques del CBU
+        let bloquesEncontrados = 0;
+        bloques.forEach(bloque => {
+            if (detalleLimpio.includes(bloque)) bloquesEncontrados++;
+        });
+        
+        // Si encontramos más del 60% de los bloques, asumimos que es el CBU correcto
+        const contieneCbu = bloques.length > 0 && (bloquesEncontrados / bloques.length) >= 0.6;
         
         const esEgreso = (mov.monto < 0 || (mov.haber && parseFloat(mov.haber) > 0));
 
         if ((contieneCuit || contieneCbu) && esEgreso) {
-            console.log("✅ ENCONTRADO (CUIT o CBU Flexible):", detalle, "Monto:", monto);
+            console.log("✅ ENCONTRADO:", detalle, "Monto:", monto);
             const claveUnica = `${mov.fecha || 'sinfecha'}_${monto}`;
             encontrados.set(claveUnica, { monto, fecha: mov.fecha || '', origen: 'AUTO' });
         }
@@ -1795,16 +1805,17 @@ function registrarAnticipo() {
     // Si no, deberás obtenerlos de tus inputs globales (aS.value, mS.value)
     abrirLegajo(empActual.id || empActual.n); 
 }
-
-function renderHistorialAnticipos(sueldoCalculado, manuales = [], automaticos = []) {
+// Agregamos un parámetro opcional: sueldoParaDescontar
+function renderHistorialAnticipos(sueldoVisual, manuales = [], automaticos = [], sueldoParaDescontar = null) {
     const container = document.getElementById('historial-anticipos');
     if (!container) return;
 
-    // Combinamos todo en un solo array
     const todosLosAnticipos = [...manuales, ...automaticos];
     const totalDado = todosLosAnticipos.reduce((sum, a) => sum + parseFloat(a.monto), 0);
-    const sueldoNeto = sueldoCalculado || 0;
-    const faltante = Math.max(0, sueldoNeto - totalDado);
+    
+    // Si sueldoParaDescontar existe, usamos ese para el cálculo; si no, usamos el visual
+    const netoParaCalculo = sueldoParaDescontar !== null ? sueldoParaDescontar : sueldoVisual;
+    const faltante = Math.max(0, netoParaCalculo - totalDado);
     
     container.innerHTML = `
         <p>💰 Anticipado Total: $${totalDado.toLocaleString()} | 📌 Faltante: <b>$${faltante.toLocaleString()}</b></p>
