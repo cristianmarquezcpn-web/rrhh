@@ -220,9 +220,9 @@
                 </div>
                 <div class="card"><div class="table-wrapper"><table><thead id="h-asist"></thead><tbody id="b-asist"></tbody></table></div></div>
             </div>
-			<div id="legajos" class="modulo-div" style="display:none">
+<div id="legajos" class="modulo-div" style="display:none">
     <div class="card">
-        <div style="display:flex; gap:10px; margin-bottom:10px;">
+        <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap: wrap;">
             <button class="btn btn-primary" onclick="nuevoEmpleado()">+ INDIVIDUAL</button>
             <button class="btn btn-danger" onclick="vaciar()" style="background:var(--rojo); color:white;">🗑️ VACIAR BASE</button>
         </div>
@@ -232,7 +232,7 @@
 
         <hr style="margin: 20px 0;">
 
-        <div style="background: #f0f7ff; padding: 15px; border-radius: 8px; border: 1px solid #d1e7ff;">
+        <div style="background: #f0f7ff; padding: 15px; border-radius: 8px; border: 1px solid #d1e7ff; margin-bottom: 20px;">
             <h4 style="margin-top:0; font-size:14px; color:var(--azul);">⚙️ Ajuste de Valor Hora (vh)</h4>
             <div style="display: flex; gap: 5px; flex-wrap: wrap;">
                 <input type="text" id="aum-centro" placeholder="Centro" style="width: 80px; padding: 5px;">
@@ -241,20 +241,22 @@
                 <button class="btn" onclick="aplicarAumentoUI()" style="background:var(--cobalto); color:white; padding: 5px 10px;">APLICAR</button>
             </div>
         </div>
+
+        <div class="table-wrapper" style="overflow-x: auto;">
+            <table style="width:1400px; border-collapse: collapse;">
+                <thead>
+                    <tr>
+                        <th>Nombre</th><th>Email</th><th>Profesión</th><th>Entrada</th>
+                        <th>Salida</th><th>CUIT</th><th>Hs/D</th><th>$xH</th>
+                        <th>CBU/Alias</th><th>Centro</th><th>Ingreso</th><th>Egreso</th>
+                        <th>Esquema</th><th>Doc</th><th>X</th>
+                    </tr>
+                </thead>
+                <tbody id="b-legajos"></tbody>
+            </table>
+        </div>
     </div>
 </div>
-                    <div class="card">
-                    <div class="table-wrapper">
-                        <table style="width:1400px">
-                            <thead>
-                                <thead><tr><th>Nombre</th><th>Email</th><th>Profesión</th><th>Entrada</th><th>Salida</th><th>CUIT</th><th>Hs/D</th><th>$xH</th><th>CBU/Alias</th><th>Centro</th><th>Ingreso</th><th>Egreso</th><th>Esquema</th><th>Doc</th><th>X</th></tr></thead>
-                            </thead>
-                            <tbody id="b-legajos"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
 <div id="liquidacion" class="modulo-div" style="display:none">
     <div class="card" id="btns-liq" style="display:flex; gap:5px; flex-wrap:wrap;"></div>
     <div id="count-pend" style="margin: 10px 0; font-weight: bold;"></div>
@@ -1479,30 +1481,18 @@ function aplicarAumentoUI() {
     const prof = document.getElementById('aum-prof').value.trim();
     const monto = parseFloat(document.getElementById('aum-monto').value);
 
-    if (!centro || !monto) return alert("Completá Centro y Monto.");
+    if (!centro || isNaN(monto)) return alert("Completá Centro y Monto.");
 
-    // Procesamos el array
+    // Procesamos el array local
     const nuevosEmpleados = empleados.map(emp => {
-        // Verifica si coincide el centro y (opcionalmente) la profesión
-        const coincideCentro = emp.c === centro;
-        const coincideProf = (prof === "" || emp.profesion === prof);
-
-        if (coincideCentro && coincideProf) {
-            return { 
-                ...emp, 
-                vh: parseFloat(emp.vh || 0) + monto 
-            };
+        if (emp.c === centro && (prof === "" || emp.profesion === prof)) {
+            return { ...emp, vh: parseFloat(emp.vh || 0) + monto };
         }
         return emp;
     });
-
-    // Guardamos en Firebase y limpiamos los campos
-    dbEmpleados.set(nuevosEmpleados).then(() => {
-        alert("¡Aumento aplicado correctamente!");
-        document.getElementById('aum-centro').value = "";
-        document.getElementById('aum-prof').value = "";
-        document.getElementById('aum-monto').value = "";
-    });
+    dbEmpleados.set(nuevosEmpleados)
+        .then(() => alert("¡Aumento aplicado con éxito!"))
+        .catch(err => alert("Error al guardar: " + err.message));
 }	
 // ============================================================
 // =============== MÓDULO EMPLEADOS (TITANIUM) ================
