@@ -220,17 +220,30 @@
                 </div>
                 <div class="card"><div class="table-wrapper"><table><thead id="h-asist"></thead><tbody id="b-asist"></tbody></table></div></div>
             </div>
+			<div id="legajos" class="modulo-div" style="display:none">
+    <div class="card">
+        <div style="display:flex; gap:10px; margin-bottom:10px;">
+            <button class="btn btn-primary" onclick="nuevoEmpleado()">+ INDIVIDUAL</button>
+            <button class="btn btn-danger" onclick="vaciar()" style="background:var(--rojo); color:white;">🗑️ VACIAR BASE</button>
+        </div>
+        
+        <textarea id="txt-masivo" style="width:100%; height:60px; border-radius:8px; border:1px solid #ddd; padding:8px; font-size:10px;" placeholder="Pega desde Excel..."></textarea>
+        <button class="btn btn-primary" style="width:100%; margin-top:5px; background:var(--azul);" onclick="importar()">🚀 PROCESAR EXCEL</button>
 
-            <div id="legajos" class="modulo-div" style="display:none">
-                <div class="card">
-                    <div style="display:flex; gap:10px; margin-bottom:10px;">
-                        <button class="btn btn-primary" onclick="nuevoEmpleado()">+ INDIVIDUAL</button>
-                        <button class="btn btn-danger" onclick="vaciar()" style="background:var(--rojo); color:white;">🗑️ VACIAR BASE</button>
-                    </div>
-                    <textarea id="txt-masivo" style="width:100%; height:60px; border-radius:8px; border:1px solid #ddd; padding:8px; font-size:10px;" placeholder="Pega desde Excel: Nombre;Email;CUIT;Hs;Valor;Sede;Ingreso;Esquema;CBU"></textarea>
-                    <button class="btn btn-primary" style="width:100%; margin-top:5px; background:var(--azul);" onclick="importar()">🚀 PROCESAR EXCEL</button>
-                </div>
-                	<div class="card">
+        <hr style="margin: 20px 0;">
+
+        <div style="background: #f0f7ff; padding: 15px; border-radius: 8px; border: 1px solid #d1e7ff;">
+            <h4 style="margin-top:0; font-size:14px; color:var(--azul);">⚙️ Ajuste de Valor Hora (vh)</h4>
+            <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                <input type="text" id="aum-centro" placeholder="Centro" style="width: 80px; padding: 5px;">
+                <input type="text" id="aum-prof" placeholder="Profesión" style="width: 100px; padding: 5px;">
+                <input type="number" id="aum-monto" placeholder="Monto $" style="width: 80px; padding: 5px;">
+                <button class="btn" onclick="aplicarAumentoUI()" style="background:var(--cobalto); color:white; padding: 5px 10px;">APLICAR</button>
+            </div>
+        </div>
+    </div>
+</div>
+                    <div class="card">
                     <div class="table-wrapper">
                         <table style="width:1400px">
                             <thead>
@@ -1461,6 +1474,36 @@ function exportarExcelLiquidacion() {
     // 6. Descarga inmediata indicando el mes auditado
     XLSX.writeFile(wb, `Liquidacion_${nombreMesActual}_${elAnio}_Sedes.xlsx`);
 }
+function aplicarAumentoUI() {
+    const centro = document.getElementById('aum-centro').value.trim();
+    const prof = document.getElementById('aum-prof').value.trim();
+    const monto = parseFloat(document.getElementById('aum-monto').value);
+
+    if (!centro || !monto) return alert("Completá Centro y Monto.");
+
+    // Procesamos el array
+    const nuevosEmpleados = empleados.map(emp => {
+        // Verifica si coincide el centro y (opcionalmente) la profesión
+        const coincideCentro = emp.c === centro;
+        const coincideProf = (prof === "" || emp.profesion === prof);
+
+        if (coincideCentro && coincideProf) {
+            return { 
+                ...emp, 
+                vh: parseFloat(emp.vh || 0) + monto 
+            };
+        }
+        return emp;
+    });
+
+    // Guardamos en Firebase y limpiamos los campos
+    dbEmpleados.set(nuevosEmpleados).then(() => {
+        alert("¡Aumento aplicado correctamente!");
+        document.getElementById('aum-centro').value = "";
+        document.getElementById('aum-prof').value = "";
+        document.getElementById('aum-monto').value = "";
+    });
+}	
 // ============================================================
 // =============== MÓDULO EMPLEADOS (TITANIUM) ================
 // ============================================================
