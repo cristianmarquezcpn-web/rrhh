@@ -128,7 +128,8 @@
         filtrados.forEach(e => {
             const btn = document.createElement('button');
             btn.className = 'btn-prof';
-            btn.innerHTML = `<div><b>${e.n}</b><br><small>${e.esp || 'Profesional'}</small></div><span>🖋️</span>`;
+            // Se agregó la línea del esquema debajo de la profesión
+            btn.innerHTML = `<div><b>${e.n}</b><br><small>${e.esp || 'Profesional'} | Esquema: ${e.esquema || 'N/A'}</small></div><span>🖋️</span>`;
             btn.onclick = () => abrirMóduloFirma(e); 
             lista.appendChild(btn);
         });
@@ -175,7 +176,14 @@
         const fVal = document.getElementById('fecha-registro').value;
         const fechaE = new Date(fVal + "T12:00:00");
         const d = fechaE.getDate(), m = fechaE.getMonth(), a = fechaE.getFullYear(); // AÑO AUTOMÁTICO
+        const diasSemana = ["D", "L", "M", "X", "J", "V", "S"];
+        const diaActual = diasSemana[fechaE.getDay()];
         
+        if (profActivo.esquema && !profActivo.esquema.includes(diaActual)) {
+            if (!confirm("⚠️ ATENCIÓN: El esquema de este profesional es (" + profActivo.esquema + ") y hoy es " + diaActual + ". ¿Está seguro de continuar?")) {
+                return;
+            }
+        }
         const ahora = new Date();
         const hora = ahora.getHours() + ":" + ahora.getMinutes().toString().padStart(2, '0');
         const ref = db.child(`asistencia/${a}/${m}/${centroActivo}/${profActivo.id}/${d}`);
