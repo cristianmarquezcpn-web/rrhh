@@ -1476,23 +1476,42 @@ function exportarExcelLiquidacion() {
     // 6. Descarga inmediata indicando el mes auditado
     XLSX.writeFile(wb, `Liquidacion_${nombreMesActual}_${elAnio}_Sedes.xlsx`);
 }
-function aplicarAumentoUI() {
+async function aplicarAumentoUI() {
     const centro = document.getElementById('aum-centro').value.trim();
     const prof = document.getElementById('aum-prof').value.trim();
-    const monto = parseFloat(document.getElementById('aum-monto').value);
+    // Aquí recibes el valor final, por ejemplo: 1500
+    const nuevoValorFinal = parseFloat(document.getElementById('aum-monto').value);
 
-    if (!centro || isNaN(monto)) return alert("Completá Centro y Monto.");
+    if (!centro || isNaN(nuevoValorFinal)) return alert("Completá Centro y un Nuevo Valor válido.");
 
-    // Procesamos el array local
-    const nuevosEmpleados = empleados.map(emp => {
+    const refEmpleados = db.reference("SISTEMA_PERSONAL/empleados");
+    const snapshot = await refEmpleados.once('value');
+    const todosLosEmpleados = snapshot.val();
+
+    if (!todosLosEmpleados) return alert("No se encontraron empleados en la base de datos.");
+
+    const updates = {};
+    let encontrado = false;
+
+    Object.keys(todosLosEmpleados).forEach((key) => {
+        const emp = todosLosEmpleados[key];
+        
+        // Verifica si cumple los criterios
         if (emp.c === centro && (prof === "" || emp.profesion === prof)) {
-            return { ...emp, vh: parseFloat(emp.vh || 0) + monto };
+            // Asignamos directamente el valor que escribiste en el input
+            updates[`SISTEMA_PERSONAL/empleados/${key}/vh`] = nuevoValorFinal;
+            encontrado = true;
         }
-        return emp;
     });
-    dbEmpleados.set(nuevosEmpleados)
-        .then(() => alert("¡Aumento aplicado con éxito!"))
-        .catch(err => alert("Error al guardar: " + err.message));
+
+    if (!encontrado) return alert("No se encontraron empleados con esos criterios.");
+
+    try {
+        await db.reference().update(updates);
+        alert("¡Valor actualizado exitosamente!");
+    } catch (err) {
+        alert("Error al guardar: " + err.message);
+    }
 }	
 // ============================================================
 // =============== MÓDULO EMPLEADOS (TITANIUM) ================
