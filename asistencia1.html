@@ -1479,43 +1479,36 @@ function exportarExcelLiquidacion() {
 async function aplicarAumentoUI() {
     const centro = document.getElementById('aum-centro').value.trim();
     const prof = document.getElementById('aum-prof').value.trim();
-    const monto = parseFloat(document.getElementById('aum-monto').value);
+    // Aquí recibes el valor final, por ejemplo: 1500
+    const nuevoValorFinal = parseFloat(document.getElementById('aum-monto').value);
 
-    if (!centro || isNaN(monto)) return alert("Completá Centro y Monto.");
+    if (!centro || isNaN(nuevoValorFinal)) return alert("Completá Centro y un Nuevo Valor válido.");
 
-    // 1. Obtenemos la referencia al nodo de empleados
     const refEmpleados = db.reference("SISTEMA_PERSONAL/empleados");
-    
-    // 2. Traemos solo una vez los datos para identificar los IDs (keys)
     const snapshot = await refEmpleados.once('value');
     const todosLosEmpleados = snapshot.val();
 
     if (!todosLosEmpleados) return alert("No se encontraron empleados en la base de datos.");
 
-    // 3. Creamos un objeto 'updates' donde las llaves son las rutas exactas a cambiar
     const updates = {};
     let encontrado = false;
 
     Object.keys(todosLosEmpleados).forEach((key) => {
         const emp = todosLosEmpleados[key];
         
-        // Verificamos si cumple los criterios
+        // Verifica si cumple los criterios
         if (emp.c === centro && (prof === "" || emp.profesion === prof)) {
-            const valorActual = parseFloat(emp.vh || 0);
-            const nuevoValor = valorActual + monto;
-            
-            // La ruta clave: cambia solo el campo 'vh' de esta key específica
-            updates[`SISTEMA_PERSONAL/empleados/${key}/vh`] = nuevoValor;
+            // Asignamos directamente el valor que escribiste en el input
+            updates[`SISTEMA_PERSONAL/empleados/${key}/vh`] = nuevoValorFinal;
             encontrado = true;
         }
     });
 
     if (!encontrado) return alert("No se encontraron empleados con esos criterios.");
 
-    // 4. Ejecutamos el update masivo (atómico) en una sola llamada
     try {
         await db.reference().update(updates);
-        alert("¡Aumento aplicado con éxito a los registros seleccionados!");
+        alert("¡Valor actualizado exitosamente!");
     } catch (err) {
         alert("Error al guardar: " + err.message);
     }
