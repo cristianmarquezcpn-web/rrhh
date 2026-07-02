@@ -1479,15 +1479,16 @@ function exportarExcelLiquidacion() {
 async function aplicarAumentoUI() {
     const centro = document.getElementById('aum-centro').value.trim();
     const prof = document.getElementById('aum-prof').value.trim();
-    const valorDeseado = parseFloat(document.getElementById('aum-monto').value);
+    // Valor que tú escribes (ej. 1500)
+    const nuevoValorFinal = parseFloat(document.getElementById('aum-monto').value);
 
-    if (!centro || isNaN(valorDeseado)) return alert("Completá Centro y un Nuevo Valor válido.");
+    if (!centro || isNaN(nuevoValorFinal)) return alert("Completá Centro y un Nuevo Valor válido.");
 
     const refEmpleados = db.reference("SISTEMA_PERSONAL/empleados");
     const snapshot = await refEmpleados.once('value');
     const todosLosEmpleados = snapshot.val();
 
-    if (!todosLosEmpleados) return alert("No se encontraron empleados.");
+    if (!todosLosEmpleados) return alert("No se encontraron empleados en la base de datos.");
 
     const updates = {};
     let encontrado = false;
@@ -1495,15 +1496,12 @@ async function aplicarAumentoUI() {
     Object.keys(todosLosEmpleados).forEach((key) => {
         const emp = todosLosEmpleados[key];
         
+        // Criterio de filtrado
         if (emp.c === centro && (prof === "" || emp.profesion === prof)) {
-            const valorActual = parseFloat(emp.vh || 0);
-            
-            // LÓGICA DE CORRECCIÓN:
-            // Si el sistema te está sumando el valor, al restar el actual 
-            // y enviar la diferencia, el resultado final debería ser el deseado.
-            const valorAEnviar = valorDeseado - valorActual;
-            
-            updates[`SISTEMA_PERSONAL/empleados/${key}/vh`] = valorAEnviar;
+            // AQUÍ LA CLAVE:
+            // Al asignar directamente el valor, Firebase reemplaza el valor viejo por este nuevo.
+            // No estamos haciendo ninguna suma (emp.vh + monto).
+            updates[`SISTEMA_PERSONAL/empleados/${key}/vh`] = nuevoValorFinal;
             encontrado = true;
         }
     });
@@ -1511,12 +1509,13 @@ async function aplicarAumentoUI() {
     if (!encontrado) return alert("No se encontraron empleados con esos criterios.");
 
     try {
+        // Ejecutamos el update sobre la base completa
         await db.reference().update(updates);
-        alert("¡Valor aplicado! (Cálculo ajustado para compensar posibles sumas automáticas)");
+        alert("¡Valor actualizado! El nuevo valor es: " + nuevoValorFinal);
     } catch (err) {
         alert("Error al guardar: " + err.message);
     }
-}	
+}
 // ============================================================
 // =============== MÓDULO EMPLEADOS (TITANIUM) ================
 // ============================================================
