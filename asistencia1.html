@@ -1484,7 +1484,7 @@ async function aplicarAumentoUI() {
 
     if (!centro || isNaN(nuevoValorFinal)) return alert("Completá Centro y un Nuevo Valor válido.");
 
-    const refEmpleados = db.reference("SISTEMA_PERSONAL/empleados");
+    const refEmpleados = database.ref("SISTEMA_PERSONAL/empleados");
     const snapshot = await refEmpleados.once('value');
     const todosLosEmpleados = snapshot.val();
 
