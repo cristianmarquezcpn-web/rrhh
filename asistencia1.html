@@ -1477,14 +1477,12 @@ function exportarExcelLiquidacion() {
     XLSX.writeFile(wb, `Liquidacion_${nombreMesActual}_${elAnio}_Sedes.xlsx`);
 }
 async function aplicarAumentoUI() {
-    const centro = document.getElementById('aum-centro').value.trim();
+    const dbRef = (typeof db !== 'undefined') ? db : database;
+	const centro = document.getElementById('aum-centro').value.trim();
     const prof = document.getElementById('aum-prof').value.trim();
-    // Aquí recibes el valor final, por ejemplo: 1500
     const nuevoValorFinal = parseFloat(document.getElementById('aum-monto').value);
-
     if (!centro || isNaN(nuevoValorFinal)) return alert("Completá Centro y un Nuevo Valor válido.");
-
-    const refEmpleados = database.ref("SISTEMA_PERSONAL/empleados");
+    const refEmpleados = dbRef.reference("SISTEMA_PERSONAL/empleados");
     const snapshot = await refEmpleados.once('value');
     const todosLosEmpleados = snapshot.val();
 
@@ -1496,9 +1494,8 @@ async function aplicarAumentoUI() {
     Object.keys(todosLosEmpleados).forEach((key) => {
         const emp = todosLosEmpleados[key];
         
-        // Verifica si cumple los criterios
         if (emp.c === centro && (prof === "" || emp.profesion === prof)) {
-            // Asignamos directamente el valor que escribiste en el input
+            // Reemplazo directo sin sumar nada
             updates[`SISTEMA_PERSONAL/empleados/${key}/vh`] = nuevoValorFinal;
             encontrado = true;
         }
@@ -1507,7 +1504,7 @@ async function aplicarAumentoUI() {
     if (!encontrado) return alert("No se encontraron empleados con esos criterios.");
 
     try {
-        await db.reference().update(updates);
+        await dbRef.reference().update(updates);
         alert("¡Valor actualizado exitosamente!");
     } catch (err) {
         alert("Error al guardar: " + err.message);
