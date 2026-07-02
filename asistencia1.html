@@ -1477,12 +1477,14 @@ function exportarExcelLiquidacion() {
     XLSX.writeFile(wb, `Liquidacion_${nombreMesActual}_${elAnio}_Sedes.xlsx`);
 }
 async function aplicarAumentoUI() {
-    const dbRef = (typeof db !== 'undefined') ? db : database;
-	const centro = document.getElementById('aum-centro').value.trim();
+    const db = firebase.database(); 
+
+    const centro = document.getElementById('aum-centro').value.trim();
     const prof = document.getElementById('aum-prof').value.trim();
     const nuevoValorFinal = parseFloat(document.getElementById('aum-monto').value);
+
     if (!centro || isNaN(nuevoValorFinal)) return alert("Completá Centro y un Nuevo Valor válido.");
-    const refEmpleados = dbRef.reference("SISTEMA_PERSONAL/empleados");
+    const refEmpleados = db.ref("SISTEMA_PERSONAL/empleados");
     const snapshot = await refEmpleados.once('value');
     const todosLosEmpleados = snapshot.val();
 
@@ -1495,7 +1497,6 @@ async function aplicarAumentoUI() {
         const emp = todosLosEmpleados[key];
         
         if (emp.c === centro && (prof === "" || emp.profesion === prof)) {
-            // Reemplazo directo sin sumar nada
             updates[`SISTEMA_PERSONAL/empleados/${key}/vh`] = nuevoValorFinal;
             encontrado = true;
         }
@@ -1504,7 +1505,7 @@ async function aplicarAumentoUI() {
     if (!encontrado) return alert("No se encontraron empleados con esos criterios.");
 
     try {
-        await dbRef.reference().update(updates);
+        await db.ref().update(updates);
         alert("¡Valor actualizado exitosamente!");
     } catch (err) {
         alert("Error al guardar: " + err.message);
