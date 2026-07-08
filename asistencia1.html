@@ -1136,52 +1136,70 @@ async function congelarMesActual() {
         lista.forEach(e => {
             const asistE = dataRaw[e.id] || {};
             
-            // --- LOGICA MATEMATICA EXACTA DE RENDERLIQ ---
+            // --- INICIO DEL CEREBRO EXACTO DE RENDERLIQ ---
             let valorHora = parseFloat(e.vh) || 0;
-            let horasPorDia = parseFloat(e.h) || 0; 
+            let horasPorDia = parseFloat(e.h) || 0;
             
             let esquemaLimpio = (e.esquema || "").trim();
-            let diasPorSemana = esquemaLimpio.includes(',') ? esquemaLimpio.split(',').length : esquemaLimpio.length;
-            const topeHorasMensuales = diasPorSemana * 4 * horasPorDia;
-
-            let horasDePresenciaEfectiva = topeHorasMensuales;
+            // Limpiamos espacios y comas para contar exactamente los días de la semana contratados
+            let diasPorSemana = esquemaLimpio.replace(/[^A-Za-z]/g, '').length || 1; 
+            let totalTeorico = diasPorSemana * 4 * horasPorDia; 
+            
+            let diasComputables = 0; // Suma de (P, AC, F) y también (A)
+            let horasDescuentoFalta = 0; // Lo que se resta por (A)
+            let horasPenalidad = 0; // Lo que se resta por tardanzas/salidas
             let contadorTardanzas = 0;
+            
+            const fIngreso = new Date((e.fIngreso || "2000-01-01") + "T00:00:00");
+            const fEgreso = e.fEgreso ? new Date(e.fEgreso) : null;
 
             for (let d = 1; d <= diasEnMes; d++) {
+                let fechaActual = new Date(a, m, d);
+                if (fechaActual < fIngreso) continue;
+                if (fEgreso && fechaActual > fEgreso) continue;
+
                 let reg = asistE[d];
                 if (!reg) continue;
 
-                const valorTexto = reg.toString().toUpperCase();
+                let valor = typeof reg === 'object' ? (reg.val || "") : reg.toString();
+                let vL = valor.toUpperCase();
 
-                if (valorTexto === 'A') {
-                    horasDePresenciaEfectiva -= horasPorDia;
-                } else if (typeof reg === 'object' || ['P', 'AC', 'F', 'T'].includes(valorTexto)) {
-                    if (typeof reg === 'object') {
-                        if (reg.in && e.hIngreso) {
-                            let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
-                            if (difIn > 15 && difIn <= 60) {
-                                contadorTardanzas++;
-                                if (contadorTardanzas >= 3) { horasDePresenciaEfectiva -= horasPorDia; contadorTardanzas = 0; }
-                            } else if (difIn > 60) {
-                                horasDePresenciaEfectiva -= Math.floor(difIn / 60);
-                            }
+                // Lógica de conteo: Presencias y Faltas avanzan el reloj del mes
+                if (['P', 'AC', 'F'].includes(vL)) {
+                    diasComputables++;
+                } else if (vL === 'A') {
+                    diasComputables++;
+                    horasDescuentoFalta += horasPorDia; // Se guarda el descuento de la falta
+                }
+
+                // Penalizaciones
+                if (typeof reg === 'object') {
+                    if (reg.in && e.hIngreso) {
+                        let difIn = calcularDiferenciaMinutos(e.hIngreso, reg.in);
+                        if (difIn > 15 && difIn <= 60) {
+                            contadorTardanzas++;
+                            if (contadorTardanzas >= 3) { horasPenalidad += horasPorDia; contadorTardanzas = 0; }
+                        } else if (difIn > 60) {
+                            horasPenalidad += Math.floor(difIn / 60);
                         }
-                        if (reg.out && e.hEgreso) {
-                            let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
-                            if (difOut > 15) {
-                                let horasAntes = Math.floor(difOut / 60);
-                                if (horasAntes > 0) horasDePresenciaEfectiva -= horasAntes;
-                            }
+                    }
+                    if (reg.out && e.hEgreso) {
+                        let difOut = calcularDiferenciaMinutos(reg.out, e.hEgreso);
+                        if (difOut > 15) {
+                            horasPenalidad += Math.floor(difOut / 60);
                         }
                     }
                 }
             }
 
-            let horasBase = Math.max(0, horasDePresenciaEfectiva);
+            // EL CÁLCULO ESTRICTO
+            let horasBaseComputadas = Math.min(totalTeorico, diasComputables * horasPorDia);
+            let horasRealesTrabajadas = Math.max(0, horasBaseComputadas - horasDescuentoFalta - horasPenalidad);
             let extras = parseFloat(asistE['EXT']) || 0;
-            let htFinal = horasBase + extras;
+            let htFinal = horasRealesTrabajadas + extras;
+            // --- FIN DEL CEREBRO ---
             
-            // 2. GUARDAMOS EL RESULTADO DEL CALCULO UNIFICADO
+            // 2. GUARDAMOS EL RESULTADO EN EL FORMATO DE FIREBASE
             fotos[e.id] = {
                 nombre: e.n,
                 hs: htFinal,
