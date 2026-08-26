@@ -541,7 +541,7 @@ function renderAsist() {
 
     dbAsistencia.child(`${a}/${m}/${c}`).on('value', snap => {
         const dataRaw = snap.val() || {};
-        
+
         // FILTRO DE BAJAS Y CENTRO
         document.getElementById('b-asist').innerHTML = empleados.filter(e => {
             const fechaEgreso = e.fEgreso ? new Date(e.fEgreso) : null;
@@ -554,18 +554,25 @@ function renderAsist() {
 
             for (let d = 1; d <= totalMes; d++) {
                 let fC = new Date(a, m, d), dL = dSemana[fC.getDay()], fI = new Date((e.fIngreso || "2000-01-01") + "T00:00:00");
-                
+
                 // Lógica de bloqueo: Domingo, antes de ingreso, después de egreso, o fuera de esquema
                 let bloq = (fC.getDay() === 0) || (fC < fI) || (e.fEgreso && fC > new Date(e.fEgreso)) || (esc !== "" && !esc.includes(dL));
 
                 let v = dataE[d] || "";
                 let hIn = "--", hOut = "--", valorFinal = "";
                 let bgEstilo = ""; 
+                let mensajeTooltip = ""; // <-- Variable para guardar el texto del tooltip
 
                 if (v !== null && typeof v === 'object') {
                     valorFinal = v.val || "P";
                     hIn = v.in || "--"; 
                     hOut = v.out || "--";
+                    
+                    // Si tiene justificación guardada, armamos el texto para el mouse
+                    if (v.com) {
+                        mensajeTooltip = `Justificación (P manual): ${v.com}`;
+                    }
+
                     bgEstilo = "background-color: #2ecc71; color: white;"; 
                     if (hIn !== "--" && e.hIngreso) {
                         let minsTarde = calcularDiferenciaMinutos(e.hIngreso, hIn);
@@ -586,6 +593,7 @@ function renderAsist() {
                         <div class="flipper">
                             <div class="front" style="display:flex; align-items:center; justify-content:center; ${bgEstilo}">
                                 <input class="celda-flip" value="${valorFinal}" 
+                                       title="${mensajeTooltip}"
                                        style="background: transparent; color: inherit; border: none; text-align: center; width: 100%; font-weight: bold; font-size: 11px;"
                                        ${bloq ? 'disabled tabindex="-1"' : ''}
                                        oninput="saveA('${e.id}',${d},this.value,'${c}',${m},${a})"
@@ -606,28 +614,69 @@ function renderAsist() {
         }).join('');
     });
 }
-function saveA(id, d, v, c, m, a) { 
-    const el = event.target; 
-    v = v.toUpperCase(); 
-    if(v === 'C') v = 'AC'; 
+function saveA(id, d, v, c, m, a) {    
+    const el = event.target;    
+    v = v.toUpperCase();    
+    if(v === 'C') v = 'AC';    
     
+    let comentario = "";
+    
+    // SÓLO si ponen 'P' pedimos justificación obligatoria
+    if (v === 'P') {
+        comentario = prompt("⚠️ Ingresá la justificación o motivo de la marcación manual de la 'P':");
+        if (comentario === null) {
+            // Si cancelan el prompt, recargamos la vista para cancelar el cambio
+            renderAsist();
+            return;
+        }
+    }
+
+    // Si es 'P' y hay comentario, guardamos un objeto. Si es otra letra, guardamos solo el texto/valor.
+    let datoAGuardar = v;
+    if (v === 'P' && comentario.trim() !== "") {
+        datoAGuardar = {
+            val: 'P',
+            com: comentario.trim()
+        };
+    }
+
     // Guardamos en Firebase
-    dbAsistencia.child(`${a}/${m}/${c}/${id}/${d}`).set(v); 
+    dbAsistencia.child(`${a}/${m}/${c}/${id}/${d}`).set(datoAGuardar);    
     
     // Limpiamos colores previos pero MANTENEMOS celda-flip
     el.classList.remove('P', 'A', 'F', 'AC', 'tarde');
     
     // Aplicamos el nuevo color al contenedor "front" para que pinte todo el cuadro
-    const padre = el.parentElement; 
+    const padre = el.parentElement;    
     padre.classList.remove('P', 'A', 'F', 'AC', 'tarde');
 
-    if (v === 'P') padre.classList.add("P");
-    else if (v === 'A') padre.classList.add("A");
-    else if (v === 'F') padre.classList.add("F");
-    else if (v === 'AC') padre.classList.add("AC");
-    else if (!isNaN(v) && v !== '') padre.classList.add("tarde");
+    if (v === 'P') {
+        padre.classList.add("P");
+        // Si cargó justificación, se la asignamos al title del input al instante para el mouse
+        if (comentario.trim() !== "") {
+            el.title = `Justificación (P manual): ${comentario.trim()}`;
+        }
+    }
+    else if (v === 'A') {
+        padre.classList.add("A");
+        el.title = ""; // Limpiamos si tenía algo anterior
+    }
+    else if (v === 'F') {
+        padre.classList.add("F");
+        el.title = "";
+    }
+    else if (v === 'AC') {
+        padre.classList.add("AC");
+        el.title = "";
+    }
+    else if (!isNaN(v) && v !== '') {
+        padre.classList.add("tarde");
+        el.title = "";
+    } else {
+        el.title = "";
+    }
 }
-    function marcarFeriado() {
+	function marcarFeriado() {
     const d = prompt("Día del feriado (1-31):");
     if (!d) return;
     const c = document.getElementById('c-sel').value,
