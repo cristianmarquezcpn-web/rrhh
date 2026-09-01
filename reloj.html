@@ -67,7 +67,7 @@
     <div class="controles-firma">
         <button class="btn-f" style="background:#666" onclick="cerrarFirma()">VOLVER</button>
         <button class="btn-f" style="background:var(--oro); color:#333" onclick="limpiarCanvas()">BORRAR</button>
-        <button class="btn-f" style="background:var(--verde)" onclick="guardarFichaje()">CONFIRMAR</button>
+        <button class="btn-f" id="btn-confirmar" style="background:var(--verde)" onclick="guardarFichaje(this)">CONFIRMAR</button>
     </div>
 </div>
 
@@ -152,6 +152,7 @@
     const canvas = document.getElementById('canvas-firma');
     const ctx = canvas.getContext('2d');
     let dibujando = false;
+    let firmaRealizada = false;
     ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#1a2a6c';
 
     function obtenerPosicion(e) {
@@ -160,8 +161,14 @@
         const clienteY = e.clientY || (e.touches && e.touches[0].clientY);
         return { x: clienteX - rect.left, y: clienteY - rect.top };
     }
-
-    function iniciar(e) { dibujando = true; const pos = obtenerPosicion(e); ctx.beginPath(); ctx.moveTo(pos.x, pos.y); }
+    function iniciar(e) { 
+        e.preventDefault(); // 🔒 Evita que el celular haga scroll al intentar firmar
+        dibujando = true; 
+        firmaRealizada = true; // Registra que el canvas fue tocado
+        const pos = obtenerPosicion(e); 
+        ctx.beginPath(); 
+        ctx.moveTo(pos.x, pos.y);
+    }
     function mover(e) { if (!dibujando) return; e.preventDefault(); const pos = obtenerPosicion(e); ctx.lineTo(pos.x, pos.y); ctx.stroke(); }
     function parar() { dibujando = false; }
 
@@ -171,26 +178,39 @@
     function limpiarCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
     function cerrarFirma() { document.getElementById('modal-firma').style.display = 'none'; }
 
-    function guardarFichaje() {
+    function guardarFichaje(btnElement) {
+        // 1. Evitamos que guarden firmas en blanco
+        if (!firmaRealizada) {
+            alert("⚠️ Por favor, registre su firma en el recuadro antes de confirmar.");
+            return;
+        }
+
+        // 2. Bloqueamos el botón para evitar el "Doble toque" (Entrada y Salida a la vez)
+        if (btnElement) {
+            btnElement.disabled = true;
+            btnElement.innerText = "GUARDANDO...";
+        }
+
         const firmaImg = canvas.toDataURL();
         const fVal = document.getElementById('fecha-registro').value;
         const fechaE = new Date(fVal + "T12:00:00");
-        const d = fechaE.getDate(), m = fechaE.getMonth(), a = fechaE.getFullYear(); // AÑO AUTOMÁTICO
+        const d = fechaE.getDate(), m = fechaE.getMonth(), a = fechaE.getFullYear(); 
         const diasSemana = ["D", "L", "M", "X", "J", "V", "S"];
         const diaActual = diasSemana[fechaE.getDay()];
         
         if (profActivo.esquema && !profActivo.esquema.includes(diaActual)) {
             if (!confirm("⚠️ ATENCIÓN: El esquema de este profesional es (" + profActivo.esquema + ") y hoy es " + diaActual + ". ¿Está seguro de continuar?")) {
+                if (btnElement) { btnElement.disabled = false; btnElement.innerText = "CONFIRMAR"; } // Desbloquea si cancela
                 return;
             }
         }
+        
         const ahora = new Date();
         const hora = ahora.getHours() + ":" + ahora.getMinutes().toString().padStart(2, '0');
         const ref = db.child(`asistencia/${a}/${m}/${centroActivo}/${profActivo.id}/${d}`);
 
         ref.once('value', snap => {
             const data = snap.val() || {};
-            // Guardamos firma e ingreso/salida según corresponda
             if(!data.in) {
                 ref.update({ in: hora, f_in: firmaImg, val: 'P' }).then(() => finalizar());
             } else {
