@@ -614,19 +614,62 @@ function renderAsist() {
         }).join('');
     });
 }
-function saveA(id, d, v, c, m, a) {    
+window.saveA = async function(id, d, v, c, m, a) {    
     const el = event.target;    
     v = v.toUpperCase();    
     if(v === 'C') v = 'AC';    
     
     let comentario = "";
     
-    // SÓLO si ponen 'P' pedimos justificación obligatoria
+    // SÓLO si ponen 'P' abrimos el menú de opciones especial
     if (v === 'P') {
-        comentario = prompt("⚠️ Ingresá la justificación o motivo de la marcación manual de la 'P':");
+        comentario = await new Promise((resolve) => {
+            // Creamos un modal dinámico para elegir el motivo
+            const modalDiv = document.createElement('divid-modal-p');
+            modalDiv.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:9999;";
+            modalDiv.innerHTML = `
+                <div style="background:white; padding:20px; border-radius:8px; width:320px; box-shadow:0 4px 15px rgba(0,0,0,0.3); font-family:sans-serif;">
+                    <h3 style="margin-top:0; color:#2c3e50; font-size:15px; text-align:center;">⚠️ Justificación para marcación 'P'</h3>
+                    <div style="display:flex; flex-direction:column; gap:8px; margin-top:15px;">
+                        <button class="btn-op" data-op="Jornada" style="padding:8px; background:#3498db; color:white; border:none; border-radius:4px; cursor:pointer; text-align:left;">1️⃣ Jornada</button>
+                        <button class="btn-op" data-op="Zonda" style="padding:8px; background:#3498db; color:white; border:none; border-radius:4px; cursor:pointer; text-align:left;">2️⃣ Zonda</button>
+                        <button class="btn-op" data-op="Cambio de dia" style="padding:8px; background:#3498db; color:white; border:none; border-radius:4px; cursor:pointer; text-align:left;">3️⃣ Cambio de día</button>
+                        <button class="btn-op" data-op="Corte de luz/internet" style="padding:8px; background:#3498db; color:white; border:none; border-radius:4px; cursor:pointer; text-align:left;">4️⃣ Corte de luz / internet</button>
+                        <button class="btn-op" data-op="Otras" style="padding:8px; background:#e67e22; color:white; border:none; border-radius:4px; cursor:pointer; text-align:left; font-weight:bold;">5️⃣ Otras (Requiere Contraseña)</button>
+                        <button id="btn-cancel-p" style="padding:6px; background:#95a5a6; color:white; border:none; border-radius:4px; cursor:pointer; margin-top:5px;">Cancelar</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modalDiv);
+
+            modalDiv.querySelectorAll('.btn-op').forEach(btn => {
+                btn.onclick = (e) => {
+                    const opcionSeleccionada = e.target.getAttribute('data-op');
+                    document.body.removeChild(modalDiv);
+
+                    if (opcionSeleccionada === "Otras") {
+                        const pass = prompt("🔒 Ingresá la contraseña para habilitar 'Otras':");
+                        if (pass === "3001") {
+                            const detalle = prompt("Ingresá el detalle del motivo (Otras):");
+                            resolve(detalle ? `Otras: ${detalle}` : null);
+                        } else {
+                            alert("❌ Contraseña incorrecta. Se cancela el cambio.");
+                            resolve(null);
+                        }
+                    } else {
+                        resolve(opcionSeleccionada);
+                    }
+                };
+            });
+
+            document.getElementById('btn-cancel-p').onclick = () => {
+                document.body.removeChild(modalDiv);
+                resolve(null);
+            };
+        });
+
         if (comentario === null) {
-            // Si cancelan el prompt, recargamos la vista para cancelar el cambio
-            renderAsist();
+            if (typeof renderAsist === 'function') renderAsist();
             return;
         }
     }
@@ -640,8 +683,9 @@ function saveA(id, d, v, c, m, a) {
         };
     }
 
-    // Guardamos en Firebase
-    dbAsistencia.child(`${a}/${m}/${c}/${id}/${d}`).set(datoAGuardar);    
+    // Guardamos en Firebase usando la referencia activa del sistema
+    const dbRef = typeof dbAsistencia !== 'undefined' ? dbAsistencia : firebase.database().ref();
+    dbRef.child(`${a}/${m}/${c}/${id}/${d}`).set(datoAGuardar);    
     
     // Limpiamos colores previos pero MANTENEMOS celda-flip
     el.classList.remove('P', 'A', 'F', 'AC', 'tarde');
@@ -652,14 +696,13 @@ function saveA(id, d, v, c, m, a) {
 
     if (v === 'P') {
         padre.classList.add("P");
-        // Si cargó justificación, se la asignamos al title del input al instante para el mouse
         if (comentario.trim() !== "") {
             el.title = `Justificación (P manual): ${comentario.trim()}`;
         }
     }
     else if (v === 'A') {
         padre.classList.add("A");
-        el.title = ""; // Limpiamos si tenía algo anterior
+        el.title = ""; 
     }
     else if (v === 'F') {
         padre.classList.add("F");
