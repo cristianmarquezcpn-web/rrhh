@@ -198,12 +198,14 @@
         const diasSemana = ["D", "L", "M", "X", "J", "V", "S"];
         const diaActual = diasSemana[fechaE.getDay()];
         
+        // --- 🟢 VALIDACIÓN RECUPERADA ---
         if (profActivo.esquema && !profActivo.esquema.includes(diaActual)) {
             if (!confirm("⚠️ ATENCIÓN: El esquema de este profesional es (" + profActivo.esquema + ") y hoy es " + diaActual + ". ¿Está seguro de continuar?")) {
                 if (btnElement) { btnElement.disabled = false; btnElement.innerText = "CONFIRMAR"; } // Desbloquea si cancela
                 return;
             }
         }
+        // ---------------------------------
         
         const ahora = new Date();
         const hora = ahora.getHours() + ":" + ahora.getMinutes().toString().padStart(2, '0');
@@ -218,7 +220,6 @@
             }
         });
     }
-
     function finalizar() {
         alert("¡Firma guardada correctamente!");
         location.reload();
