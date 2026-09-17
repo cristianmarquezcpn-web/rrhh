@@ -1797,14 +1797,40 @@ async function abrirLegajo(idEmpleado) {
                 <label>Nombre</label><input type="text" id="leg-n" value="${empActual.n || ''}" style="width:100%">
             </div>
             <div><label>Email</label><input type="text" id="leg-m" value="${empActual.m || ''}" style="width:100%"></div>
-            <div><label>Profesión</label><input type="text" id="leg-profesion" value="${empActual.profesion || ''}" style="width:100%"></div>
+            <div><label>Teléfono</label><input type="tel" id="leg-telefono" value="${empActual.telefono || ''}" placeholder="Ej: 2645123456" style="width:100%"></div>
+			<div><label>Profesión</label><input type="text" id="leg-profesion" value="${empActual.profesion || ''}" style="width:100%"></div>
             <div><label>CUIT</label><input type="text" id="leg-cuit" value="${empActual.cuit || ''}" style="width:100%"></div>
             <div><label>CBU</label><input type="text" id="leg-cbu" value="${empActual.cbu || ''}" style="width:100%"></div>
             <div><label>Centro</label><input type="text" id="leg-c" value="${empActual.c || ''}" style="width:100%"></div>
             <div><label>Esquema</label><input type="text" id="leg-esquema" value="${empActual.esquema || 'LMXJV'}" style="width:100%"></div>
             <div><label>F. Ingreso</label><input type="date" id="leg-fIngreso" value="${empActual.fIngreso || ''}" style="width:100%"></div>
             <div><label>F. Egreso</label><input type="date" id="leg-fEgreso" value="${empActual.fEgreso || ''}" style="width:100%"></div>
-            <div style="grid-column: span 2; background:#f4f4f4; padding:10px; border-radius:5px;">
+            // DENTRO DE abrirLegajo(), en el grid-template-columns / form:
+			<!-- SECCIÓN DOCUMENTACIÓN PDF (Título, DNI, Matrícula) -->
+			<div style="grid-column: span 2; background:#f4f4f4; padding:12px; border-radius:5px; margin-top:5px;">
+    		<h4>📄 Documentación (PDF / Imagen)</h4>
+    		<div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; font-size:12px;">
+        	<div>
+            <label><b>Título</b></label><br>
+            ${empActual.docTitulo ? `<a href="${empActual.docTitulo}" target="_blank" style="color:var(--cobalto);">Ver actual</a><br>` : ''}
+            <input type="file" id="file-titulo" accept=".pdf,image/*" onchange="handleSubidaArchivo(this, 'docTitulo')" style="width:100%; margin-top:4px;">
+            <span id="status-docTitulo" style="color:green; font-size:11px;"></span>
+        	</div>
+        	<div>
+            <label><b>DNI</b></label><br>
+            ${empActual.docDni ? `<a href="${empActual.docDni}" target="_blank" style="color:var(--cobalto);">Ver actual</a><br>` : ''}
+            <input type="file" id="file-dni" accept=".pdf,image/*" onchange="handleSubidaArchivo(this, 'docDni')" style="width:100%; margin-top:4px;">
+            <span id="status-docDni" style="color:green; font-size:11px;"></span>
+        	</div>
+        	<div>
+            <label><b>Matrícula</b></label><br>
+            ${empActual.docMatricula ? `<a href="${empActual.docMatricula}" target="_blank" style="color:var(--cobalto);">Ver actual</a><br>` : ''}
+            <input type="file" id="file-matricula" accept=".pdf,image/*" onchange="handleSubidaArchivo(this, 'docMatricula')" style="width:100%; margin-top:4px;">
+            <span id="status-docMatricula" style="color:green; font-size:11px;"></span>
+        	</div>
+    		</div>
+			</div>
+			<div style="grid-column: span 2; background:#f4f4f4; padding:10px; border-radius:5px;">
                 <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:10px;">
                     <div><label>H. Ingreso</label><input type="time" id="leg-hIngreso" value="${empActual.hIngreso || '08:00'}" style="width:100%"></div>
                     <div><label>H. Salida</label><div style="font-weight:bold; padding:5px;">${hSalida}</div></div>
@@ -2008,21 +2034,46 @@ function guardarEvaluacion() {
     });
     alert('✅ Evaluación guardada');
 }
+let urlsDocumentosTemporales = {};
+
+async function handleSubidaArchivo(inputElement, campoDoc) {
+    const file = inputElement.files[0];
+    if (!file) return;
+
+    const statusSpan = document.getElementById(`status-${campoDoc}`);
+    statusSpan.innerText = '⏳ Subiendo...';
+    statusSpan.style.color = '#e67e22';
+
+    const url = await subirACloudinary(file);
+    if (url) {
+        urlsDocumentosTemporales[campoDoc] = url;
+        // Actualizamos de una vez el objeto local para que no se pierda si hace clic en guardar
+        empActual[campoDoc] = url;
+        statusSpan.innerText = '✅ Subido';
+        statusSpan.style.color = 'green';
+    } else {
+        statusSpan.innerText = '❌ Error subida';
+        statusSpan.style.color = 'red';
+    }
+}	
 function guardarTodoLegajo() {
     const idx = empleados.indexOf(empActual);
     if (idx === -1) return alert("Error: Empleado no encontrado");
 
     // Recopilamos solo lo que quieres guardar
     const datosGuardar = {
-        anticipos: empActual.anticipos || [], // Ya se actualizan al registrarlos
+        telefono: document.getElementById('leg-telefono').value.trim(),
+		anticipos: empActual.anticipos || [], // Ya se actualizan al registrarlos
         observaciones: document.getElementById('leg-obs').value,
         evaluacion: {
             puntaje: document.getElementById('leg-puntaje').value,
             comentario: document.getElementById('leg-eval-comentario').value,
             fecha: new Date().toLocaleDateString()
-        }
+        },
+        docTitulo: empActual.docTitulo || null,
+        docDni: empActual.docDni || null,
+        docMatricula: empActual.docMatricula || null
     };
-
     // Actualizamos solo esa parte en la base de datos
     dbEmpleados.child(idx).update(datosGuardar).then(() => {
         alert('✅ Datos guardados correctamente');
