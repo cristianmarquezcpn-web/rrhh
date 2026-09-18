@@ -1798,41 +1798,41 @@ async function abrirLegajo(idEmpleado) {
             </div>
             <div><label>Email</label><input type="text" id="leg-m" value="${empActual.m || ''}" style="width:100%"></div>
             <div><label>Teléfono</label><input type="tel" id="leg-telefono" value="${empActual.telefono || ''}" placeholder="Ej: 2645123456" style="width:100%"></div>
-			<div><label>Profesión</label><input type="text" id="leg-profesion" value="${empActual.profesion || ''}" style="width:100%"></div>
+            <div><label>Profesión</label><input type="text" id="leg-profesion" value="${empActual.profesion || ''}" style="width:100%"></div>
             <div><label>CUIT</label><input type="text" id="leg-cuit" value="${empActual.cuit || ''}" style="width:100%"></div>
             <div><label>CBU</label><input type="text" id="leg-cbu" value="${empActual.cbu || ''}" style="width:100%"></div>
             <div><label>Centro</label><input type="text" id="leg-c" value="${empActual.c || ''}" style="width:100%"></div>
             <div><label>Esquema</label><input type="text" id="leg-esquema" value="${empActual.esquema || 'LMXJV'}" style="width:100%"></div>
             <div><label>F. Ingreso</label><input type="date" id="leg-fIngreso" value="${empActual.fIngreso || ''}" style="width:100%"></div>
             <div><label>F. Egreso</label><input type="date" id="leg-fEgreso" value="${empActual.fEgreso || ''}" style="width:100%"></div>
-            // DENTRO DE abrirLegajo(), en el grid-template-columns / form:
-			<!-- SECCIÓN DOCUMENTACIÓN PDF / IMAGEN CON VISTA PREVIA -->
-			<div style="grid-column: span 2; background:#f4f4f4; padding:12px; border-radius:5px; margin-top:5px;">
-    		<h4>📄 Documentación (PDF / Imagen)</h4>
-    		<div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; font-size:12px;">
-        	${['docTitulo', 'docDni', 'docMatricula'].map((campo, idx) => {
-            const labels = ['Título', 'DNI', 'Matrícula'];
-            const fileIds = ['file-titulo', 'file-dni', 'file-matricula'];
-            const urlVal = empActual[campo];
-            const esImagen = urlVal && /\.(jpg|jpeg|png|gif|webp)$/i.test(urlVal);
+            
+            <div style="grid-column: span 2; background:#f4f4f4; padding:12px; border-radius:5px; margin-top:5px;">
+                <h4>📄 Documentación (PDF / Imagen)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; font-size:12px;">
+                    ${['docTitulo', 'docDni', 'docMatricula'].map((campo, idx) => {
+                        const labels = ['Título', 'DNI', 'Matrícula'];
+                        const fileIds = ['file-titulo', 'file-dni', 'file-matricula'];
+                        const urlVal = empActual[campo];
+                        const esImagen = urlVal && /\.(jpg|jpeg|png|gif|webp)$/i.test(urlVal);
 
-            return `
-            <div style="background:#fff; padding:8px; border-radius:4px; border:1px solid #ddd; display:flex; flex-direction:column; gap:6px;">
-                <label><b>${labels[idx]}</b></label>
-                <div id="preview-${campo}" style="height:70px; display:flex; align-items:center; justify-content:center; background:#f9f9f9; border:1px dashed #ccc; border-radius:4px; overflow:hidden;">
-                    ${urlVal ? (
-                        esImagen 
-                            ? `<a href="${urlVal}" target="_blank"><img src="${urlVal}" style="max-height:100%; max-width:100%; object-fit:contain;"></a>`
-                            : `<a href="${urlVal}" target="_blank" style="color:var(--cobalto); font-weight:bold; text-align:center;">Ver PDF actual ↗</a>`
-                    ) : `<span style="color:#999; font-size:11px;">Sin cargar</span>`}
+                        return `
+                        <div style="background:#fff; padding:8px; border-radius:4px; border:1px solid #ddd; display:flex; flex-direction:column; gap:6px;">
+                            <label><b>${labels[idx]}</b></label>
+                            <div id="preview-${campo}" style="height:70px; display:flex; align-items:center; justify-content:center; background:#f9f9f9; border:1px dashed #ccc; border-radius:4px; overflow:hidden;">
+                                ${urlVal ? (
+                                    esImagen 
+                                        ? `<a href="${urlVal}" target="_blank"><img src="${urlVal}" style="max-height:100%; max-width:100%; object-fit:contain;"></a>`
+                                        : `<a href="${urlVal}" target="_blank" style="color:var(--cobalto); font-weight:bold; text-align:center;">Ver PDF actual ↗</a>`
+                                ) : `<span style="color:#999; font-size:11px;">Sin cargar</span>`}
+                            </div>
+                            <input type="file" id="${fileIds[idx]}" accept=".pdf,image/*" onchange="handleSubidaArchivo(this, '${campo}')" style="width:100%; font-size:11px;">
+                            <span id="status-${campo}" style="color:green; font-size:11px; min-height:15px;"></span>
+                        </div>`;
+                    }).join('')}
                 </div>
-                <input type="file" id="${fileIds[idx]}" accept=".pdf,image/*" onchange="handleSubidaArchivo(this, '${campo}')" style="width:100%; font-size:11px;">
-                <span id="status-${campo}" style="color:green; font-size:11px; min-height:15px;"></span>
-            </div>`;
-        	}).join('')}
-    		</div>
-			</div>
-			<div style="grid-column: span 2; background:#f4f4f4; padding:10px; border-radius:5px;">
+            </div>
+
+            <div style="grid-column: span 2; background:#f4f4f4; padding:10px; border-radius:5px;">
                 <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:10px;">
                     <div><label>H. Ingreso</label><input type="time" id="leg-hIngreso" value="${empActual.hIngreso || '08:00'}" style="width:100%"></div>
                     <div><label>H. Salida</label><div style="font-weight:bold; padding:5px;">${hSalida}</div></div>
@@ -1841,6 +1841,7 @@ async function abrirLegajo(idEmpleado) {
                     <div style="grid-column: span 4;"><label>Sueldo Base Manual ($)</label><input type="number" id="leg-sueldoBase" value="${empActual.sueldoBase || 0}" style="width:100%"></div>
                 </div>
             </div>
+
             <div style="grid-column: span 2; background:#f9f9f9; padding:10px; border:1px solid #ddd; border-radius:5px;">
                 <label>ESTADÍSTICAS Y SUELDO MES (${meses[mesAct] || mesAct})</label>
                 <div style="font-size:16px; margin-top:5px;">
@@ -1859,6 +1860,7 @@ async function abrirLegajo(idEmpleado) {
                 </div>
                 <div style="font-size:14px; margin-top:5px;">Tardanzas (>15min): <b>${totalTardanzas}</b></div>
             </div>
+
             <div style="grid-column: span 2;">
                 <h4>💵 Historial Liquidaciones</h4>
                 <div style="max-height:120px; overflow-y:auto; border:1px solid #eee; padding:5px; background:#fff;">
@@ -1868,13 +1870,14 @@ async function abrirLegajo(idEmpleado) {
                             if (!datos) return '';
                             const nombreMes = meses[parseInt(mes)] || mes;
                             return `<div style="border-bottom:1px solid #ddd; padding:6px; font-size:13px;">
-                            <b>${nombreMes} ${anio}:</b> $${parseFloat(datos.total || 0).toLocaleString()} 
-                            <br><span style="color:#666;">Hs: ${datos.hs || 0} | Extras: ${datos.extras || 0} | VH: $${datos.vh || 0}</span>
-                            </div>`;   
+                            <b>${nombreMes} ${anio}:</b>$${parseFloat(datos.total || 0).toLocaleString()} 
+                            <br><span style="color:#666;">Hs: ${datos.hs || 0} | Extras: ${datos.extras \vert{}\vert{} 0} \vert{} VH:$${datos.vh || 0}</span>
+                            </div>`;    
                         }).join('')
                     ).join('') : '<div style="padding:5px;">No hay historial.</div>'}
                 </div>
             </div>
+
             <div style="grid-column: span 2;">
                 <h4>💰 Anticipos</h4>
                 <div id="historial-anticipos"></div>
@@ -1884,12 +1887,14 @@ async function abrirLegajo(idEmpleado) {
                     <button onclick="registrarAnticipo()">+</button>
                 </div>
             </div>
+
             <div style="grid-column: span 2;">
                 <h4>📝 Evaluación y Obs</h4>
                 <select id="leg-puntaje"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
                 <textarea id="leg-eval-comentario" style="width:100%" placeholder="Comentario evaluación">${empActual.evaluacion?.comentario || ''}</textarea>
                 <textarea id="leg-obs" style="width:100%" placeholder="Observaciones">${empActual.observaciones || ''}</textarea>
             </div>
+
             <button onclick="guardarTodoLegajo()" style="grid-column: span 2; padding:15px; background:var(--cobalto); color:white; border:none; border-radius:5px; font-weight:bold;">GUARDAR TODO EL LEGAJO</button>
         </div>
     </div>`;
