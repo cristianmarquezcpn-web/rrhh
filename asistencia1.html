@@ -1785,7 +1785,7 @@ async function abrirLegajo(idEmpleado) {
         hSalida = `${hhS}:${mmS}`;
     }
 
-document.getElementById('modal-legajo').style.display = 'flex';
+    document.getElementById('modal-legajo').style.display = 'flex';
     document.getElementById('modal-legajo').innerHTML = `
     <div class="legajo-window" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
         <div class="legajo-header" style="display:flex; justify-content:space-between; align-items:center;">
@@ -1870,8 +1870,8 @@ document.getElementById('modal-legajo').style.display = 'flex';
                             if (!datos) return '';
                             const nombreMes = meses[parseInt(mes)] || mes;
                             return `<div style="border-bottom:1px solid #ddd; padding:6px; font-size:13px;">
-                            <b>${nombreMes} ${anio}:</b>$${parseFloat(datos.total || 0).toLocaleString()} 
-                            <br><span style="color:#666;">Hs: ${datos.hs || 0} | Extras: ${datos.extras \vert{}\vert{} 0} \vert{} VH:$${datos.vh || 0}</span>
+                                <b>${nombreMes} ${anio}:</b>$${parseFloat(datos.total || 0).toLocaleString()} 
+                                <br><span style="color:#666;">Hs: ${datos.hs || 0} | Extras: ${datos.extras \vert{}\vert{} 0} \vert{} VH:$${datos.vh || 0}</span>
                             </div>`;    
                         }).join('')
                     ).join('') : '<div style="padding:5px;">No hay historial.</div>'}
