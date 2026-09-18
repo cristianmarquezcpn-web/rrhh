@@ -1806,28 +1806,30 @@ async function abrirLegajo(idEmpleado) {
             <div><label>F. Ingreso</label><input type="date" id="leg-fIngreso" value="${empActual.fIngreso || ''}" style="width:100%"></div>
             <div><label>F. Egreso</label><input type="date" id="leg-fEgreso" value="${empActual.fEgreso || ''}" style="width:100%"></div>
             // DENTRO DE abrirLegajo(), en el grid-template-columns / form:
-			<!-- SECCIÓN DOCUMENTACIÓN PDF (Título, DNI, Matrícula) -->
+			<!-- SECCIÓN DOCUMENTACIÓN PDF / IMAGEN CON VISTA PREVIA -->
 			<div style="grid-column: span 2; background:#f4f4f4; padding:12px; border-radius:5px; margin-top:5px;">
     		<h4>📄 Documentación (PDF / Imagen)</h4>
-    		<div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; font-size:12px;">
-        	<div>
-            <label><b>Título</b></label><br>
-            ${empActual.docTitulo ? `<a href="${empActual.docTitulo}" target="_blank" style="color:var(--cobalto);">Ver actual</a><br>` : ''}
-            <input type="file" id="file-titulo" accept=".pdf,image/*" onchange="handleSubidaArchivo(this, 'docTitulo')" style="width:100%; margin-top:4px;">
-            <span id="status-docTitulo" style="color:green; font-size:11px;"></span>
-        	</div>
-        	<div>
-            <label><b>DNI</b></label><br>
-            ${empActual.docDni ? `<a href="${empActual.docDni}" target="_blank" style="color:var(--cobalto);">Ver actual</a><br>` : ''}
-            <input type="file" id="file-dni" accept=".pdf,image/*" onchange="handleSubidaArchivo(this, 'docDni')" style="width:100%; margin-top:4px;">
-            <span id="status-docDni" style="color:green; font-size:11px;"></span>
-        	</div>
-        	<div>
-            <label><b>Matrícula</b></label><br>
-            ${empActual.docMatricula ? `<a href="${empActual.docMatricula}" target="_blank" style="color:var(--cobalto);">Ver actual</a><br>` : ''}
-            <input type="file" id="file-matricula" accept=".pdf,image/*" onchange="handleSubidaArchivo(this, 'docMatricula')" style="width:100%; margin-top:4px;">
-            <span id="status-docMatricula" style="color:green; font-size:11px;"></span>
-        	</div>
+    		<div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; font-size:12px;">
+        	${['docTitulo', 'docDni', 'docMatricula'].map((campo, idx) => {
+            const labels = ['Título', 'DNI', 'Matrícula'];
+            const fileIds = ['file-titulo', 'file-dni', 'file-matricula'];
+            const urlVal = empActual[campo];
+            const esImagen = urlVal && /\.(jpg|jpeg|png|gif|webp)$/i.test(urlVal);
+
+            return `
+            <div style="background:#fff; padding:8px; border-radius:4px; border:1px solid #ddd; display:flex; flex-direction:column; gap:6px;">
+                <label><b>${labels[idx]}</b></label>
+                <div id="preview-${campo}" style="height:70px; display:flex; align-items:center; justify-content:center; background:#f9f9f9; border:1px dashed #ccc; border-radius:4px; overflow:hidden;">
+                    ${urlVal ? (
+                        esImagen 
+                            ? `<a href="${urlVal}" target="_blank"><img src="${urlVal}" style="max-height:100%; max-width:100%; object-fit:contain;"></a>`
+                            : `<a href="${urlVal}" target="_blank" style="color:var(--cobalto); font-weight:bold; text-align:center;">Ver PDF actual ↗</a>`
+                    ) : `<span style="color:#999; font-size:11px;">Sin cargar</span>`}
+                </div>
+                <input type="file" id="${fileIds[idx]}" accept=".pdf,image/*" onchange="handleSubidaArchivo(this, '${campo}')" style="width:100%; font-size:11px;">
+                <span id="status-${campo}" style="color:green; font-size:11px; min-height:15px;"></span>
+            </div>`;
+        	}).join('')}
     		</div>
 			</div>
 			<div style="grid-column: span 2; background:#f4f4f4; padding:10px; border-radius:5px;">
@@ -2035,25 +2037,47 @@ function guardarEvaluacion() {
     alert('✅ Evaluación guardada');
 }
 let urlsDocumentosTemporales = {};
-
 async function handleSubidaArchivo(inputElement, campoDoc) {
     const file = inputElement.files[0];
     if (!file) return;
 
     const statusSpan = document.getElementById(`status-${campoDoc}`);
+    const previewContainer = document.getElementById(`preview-${campoDoc}`);
+    
     statusSpan.innerText = '⏳ Subiendo...';
     statusSpan.style.color = '#e67e22';
 
     const url = await subirACloudinary(file);
     if (url) {
-        urlsDocumentosTemporales[campoDoc] = url;
-        // Actualizamos de una vez el objeto local para que no se pierda si hace clic en guardar
         empActual[campoDoc] = url;
         statusSpan.innerText = '✅ Subido';
         statusSpan.style.color = 'green';
+
+        // Actualizar preview en vivo
+        const esImagen = file.type.startsWith('image/');
+        if (esImagen) {
+            previewContainer.innerHTML = `<a href="${url}" target="_blank"><img src="${url}" style="max-height:100%; max-width:100%; object-fit:contain;"></a>`;
+        } else {
+            previewContainer.innerHTML = `<a href="${url}" target="_blank" style="color:var(--cobalto); font-weight:bold; text-align:center;">Ver PDF ↗</a>`;
+        }
     } else {
         statusSpan.innerText = '❌ Error subida';
         statusSpan.style.color = 'red';
+    }
+}
+async function subirACloudinary(file) {
+    const formData = new FormData();
+    const nombreLimpio = file.name.split('.').slice(0, -1).join('.');
+    formData.append('file', file);
+    formData.append('upload_preset', 'clinic_preset');
+    formData.append('public_id', nombreLimpio);
+    try { 
+        const resp = await fetch('https://api.cloudinary.com/v1_1/duscmxxws/auto/upload', { method: 'POST', body: formData }); 
+        const data = await resp.json(); 
+        return data.secure_url || null; 
+    } catch (e) { 
+        console.error("Error subida:", e);
+        return null; 
     }
 }	
 function guardarTodoLegajo() {
